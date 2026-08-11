@@ -8,8 +8,11 @@
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import importlib.metadata as metadata
 import sys
 import math
+
+from packaging import version
 
 from isaaclab.app import AppLauncher
 from rsl_rl.utils import PROJ_ROOT_DIR
@@ -57,6 +60,7 @@ sys.argv = [sys.argv[0]] + hydra_args
 # launch omniverse app
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
+installed_rsl_rl_version = metadata.version("rsl-rl-lib")
 
 """Rest everything follows."""
 
@@ -79,9 +83,9 @@ from isaaclab.envs import (
 )
 from isaaclab.utils.assets import retrieve_file_path
 from isaaclab.utils.dict import print_dict
-from isaaclab.utils.pretrained_checkpoint import get_published_pretrained_checkpoint
+from isaaclab_rl.utils.pretrained_checkpoint import get_published_pretrained_checkpoint
 
-from isaaclab_rl.rsl_rl import RslRlBaseRunnerCfg, RslRlVecEnvWrapper
+from isaaclab_rl.rsl_rl import RslRlBaseRunnerCfg, RslRlVecEnvWrapper, handle_deprecated_rsl_rl_cfg
 from exporter import export_policy_as_jit, export_policy_as_onnx
 
 import isaaclab_tasks  # noqa: F401
@@ -101,6 +105,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # override configurations with non-hydra CLI arguments
     agent_cfg: RslRlBaseRunnerCfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
+    agent_cfg = handle_deprecated_rsl_rl_cfg(agent_cfg, installed_rsl_rl_version)
+    if version.parse(installed_rsl_rl_version) < version.parse("4.0.0"):
+        del agent_cfg.algorithm.share_cnn_encoders
 
     # set the environment seed
     # note: certain randomizations occur in the environment initialization so we set the seed here
@@ -323,7 +330,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             import traceback
             traceback.print_exc()
 
-    if args_cli.save_attention_weights:
+    if args_cli.save_attention_weights or args_cli.vis_attention:
         if args_cli.vis_attention:
             attention_visualizer = _build_attention_visualizer(env.unwrapped.device)
         # simulate environment
@@ -333,7 +340,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             with torch.inference_mode():
                 # agent stepping
                 actions, attention_weights, *_ = policy(obs)
-                attention_weights_list.append(attention_weights.cpu().numpy())
+                if args_cli.save_attention_weights:
+                    attention_weights_list.append(attention_weights.cpu().numpy())
                 if args_cli.vis_attention and attention_visualizer is not None:
                     _vis_attention_on_terrain(attention_weights, env)
                 # env stepping
@@ -369,7 +377,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                 time.sleep(sleep_time)
 
     # Save attention weights after simulation
-    if len(attention_weights_list) > 0:
+    if args_cli.save_attention_weights and attention_weights_list:
         import numpy as np
         np.save(os.path.join(PROJ_ROOT_DIR, 'attention_weights.npy'), np.array(attention_weights_list))
         print(f"[INFO] Attention weights saved to attention_weights.npy, shape: {np.array(attention_weights_list).shape}")
