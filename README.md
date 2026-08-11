@@ -84,6 +84,9 @@ python scripts/rsl_rl/play.py --task AME-G1-29DOF-Play-v0 --checkpoint pretraine
 /home/brave/open_src/ssh_env_hub/task/isaaclab/IsaacLab/isaaclab.sh -p \
   /home/brave/isaaclab_pj/AME_Locomotion/scripts/rsl_rl/train.py \
   --task AME-Go2-v0 --headless
+
+rsync -avzP --ignore-existing isaaclab:/root/AME_Locomotion/logs ./logs/
+python scripts/rsl_rl/play.py --task AME-Go2-v0 --checkpoint logs/logs/rsl_rl/go2_ame/2026-08-11_21-33-40/model_4400.pt --vis_attention
 ```
 
 首次运行建议加 `--num_envs 16 --max_iterations 50`，确认 Go2 资产、足端接触与 height scanner 都能初始化后再扩大并行环境数。

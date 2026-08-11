@@ -85,7 +85,7 @@ class CommandsCfg:
         heading_control_stiffness=0.5,
         debug_vis=True,
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(0.0, 1.0),
+            lin_vel_x=(0.0, 1.5),
             lin_vel_y=(0.0, 0.0),
             ang_vel_z=(-1.0, 1.0),
             heading=(-math.pi, math.pi),
@@ -236,7 +236,7 @@ class RewardsCfg:
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0)
     feet_air_time = RewTerm(
         func=mdp.feet_air_time,
-        weight=0.125,
+        weight=0,
         params={
             "command_name": "base_velocity",
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
@@ -352,11 +352,11 @@ class Go2AMEEnvCfg(ManagerBasedRLEnvCfg):
                     "yaw": (0.0, 0.0),
                 },
             }
-            self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)
+            self.commands.base_velocity.ranges.lin_vel_x = (0.0, 1.5)
             self.commands.base_velocity.ranges.heading = (0.0, 0.0)
             self.rewards.action_rate_l2.weight = -0.05
             self.rewards.flat_orientation_l2.weight = -5.0
-            self.rewards.feet_air_time.weight = 0.25
+            self.rewards.feet_air_time.weight = 0
             self.rewards.feet_air_time_variance.weight = -1.0
             self.rewards.feet_slide.weight = -0.3
             self.rewards.feet_stumble.weight = -5.0
@@ -366,7 +366,7 @@ class Go2AMEEnvCfg(ManagerBasedRLEnvCfg):
 class Go2AMEEnvCfg_PLAY(Go2AMEEnvCfg):
     def __post_init__(self):
         super().__post_init__()
-        self.scene.num_envs = 50
+        self.scene.num_envs = 1
         self.scene.env_spacing = 2.5
         self.episode_length_s = 40.0
         self.scene.terrain.max_init_terrain_level = None
@@ -396,17 +396,10 @@ class Go2AMEEnvCfg_PLAY(Go2AMEEnvCfg):
             terrain_generator.curriculum = False
             terrain_generator.size = (8.0, 8.0)
             terrain_generator.sub_terrains = {
-                "stakes": terrain_gen.HfAlternateColumnStakesTerrainCfg(
-                    proportion=1.0,
-                    stake_height_max=0.0,
-                    stake_side_range=(0.2, 0.2),
-                    stake_gap_range=(0.3, 0.3),
-                    column_gap_range=(0.3, 0.3),
-                    column_jitter=0.0,
-                    holes_depth=-2.0,
-                    platform_width=2.0,
-                    border_width=0.25,
-                )
+                "hf_gaps": terrain_gen.HfConcentricGapTerrainCfg(
+                            proportion=0.5, gap_width_range=(0.5, 0.5), platform_width=2.0, border_width=0.25, gap_depth=-1.0,
+                            ground_width_range=(0.5, 0.5), ground_height_max=0.0
+                ),
             }
         self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)
         self.commands.base_velocity.ranges.heading = (0.0, 0.0)

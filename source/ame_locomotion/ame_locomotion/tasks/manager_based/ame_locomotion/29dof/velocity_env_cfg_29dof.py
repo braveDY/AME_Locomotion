@@ -561,7 +561,7 @@ class G1RoughEnvCfg_PLAY(G1RoughEnvCfg):
         super().__post_init__()
 
         # make a smaller scene for play
-        self.scene.num_envs = 50
+        self.scene.num_envs = 1
         self.scene.env_spacing = 2.5
         self.episode_length_s = 40.0
         
@@ -630,14 +630,14 @@ class G1RoughEnvCfg_PLAY(G1RoughEnvCfg):
                 #     stone_height_max=0.0, stone_width_range=(0.3, 0.3), stone_distance_range=(0.2, 0.2),
                 #     stone_length_range=(0.4, 0.4), stone_lateral_distance_range=(0.0, 0.0)
                 # ),
-                "stakes": terrain_gen.HfAlternateColumnStakesTerrainCfg(
-                    proportion=0.5, stake_height_max=0.0, stake_side_range=(0.2, 0.2), stake_gap_range=(0.3, 0.3),
-                    column_gap_range=(0.3, 0.3), column_jitter=0.0, holes_depth=-2.0, platform_width=2.0, border_width=0.25
-                ),
-                # "hf_gaps": terrain_gen.HfConcentricGapTerrainCfg(
-                #             proportion=0.5, gap_width_range=(0.5, 0.5), platform_width=2.0, border_width=0.25, gap_depth=-1.0,
-                #             ground_width_range=(0.5, 0.5), ground_height_max=0.0
+                # "stakes": terrain_gen.HfAlternateColumnStakesTerrainCfg(
+                #     proportion=0.5, stake_height_max=0.0, stake_side_range=(0.2, 0.2), stake_gap_range=(0.3, 0.3),
+                #     column_gap_range=(0.3, 0.3), column_jitter=0.0, holes_depth=-2.0, platform_width=2.0, border_width=0.25
                 # ),
+                "hf_gaps": terrain_gen.HfConcentricGapTerrainCfg(
+                            proportion=0.5, gap_width_range=(0.5, 0.5), platform_width=2.0, border_width=0.25, gap_depth=-1.0,
+                            ground_width_range=(0.5, 0.5), ground_height_max=0.0
+                ),
                 # "rails": terrain_gen.MeshRailsTerrainCfg(
                 #     proportion=0.1, rail_height_range=(0.30, 0.30), rail_thickness_range=(0.3, 0.3), platform_width=2.0
                 # ),
