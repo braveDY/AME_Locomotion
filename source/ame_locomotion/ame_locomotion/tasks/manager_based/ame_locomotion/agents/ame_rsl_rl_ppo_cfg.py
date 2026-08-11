@@ -36,3 +36,8 @@ class G1AMEPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         desired_kl=0.01,
         max_grad_norm=1.0,
     )
+
+
+@configclass
+class Go2AMEPPORunnerCfg(G1AMEPPORunnerCfg):
+    experiment_name = "go2_ame"

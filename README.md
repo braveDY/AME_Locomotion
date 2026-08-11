@@ -68,13 +68,26 @@ bash run_train.sh
 测试与可视化:
 
 ```bash
-bash run_play.sh
+python scripts/rsl_rl/play.py --task AME-G1-29DOF-Play-v0 --checkpoint pretrained/ame1.pt --vis_attention
 ```
 
 ### 两阶段训练说明
 
 请注意 AME 采用两阶段训练流程:
 第一阶段完成后，将 [velocity_env_cfg_29dof.py](source/ame_locomotion/ame_locomotion/tasks/manager_based/ame_locomotion/29dof/velocity_env_cfg_29dof.py) 中的 `FINETUNE` 设为 `True`，再启动第二阶段训练。
+
+### Unitree Go2
+
+本项目额外提供 `AME-Go2-v0` 和 `AME-Go2-Play-v0`，使用 Isaac Lab 的 `UNITREE_GO2_CFG`、12 维关节位置动作和相同的 `33×21×3` AME 地形图编码。Go2 不能加载 G1 的预训练模型，需从头训练。
+
+```bash
+/home/brave/open_src/ssh_env_hub/task/isaaclab/IsaacLab/isaaclab.sh -p \
+  /home/brave/isaaclab_pj/AME_Locomotion/scripts/rsl_rl/train.py \
+  --task AME-Go2-v0 --headless
+```
+
+首次运行建议加 `--num_envs 16 --max_iterations 50`，确认 Go2 资产、足端接触与 height scanner 都能初始化后再扩大并行环境数。
+Go2 第二阶段微调时，将 `go2/velocity_env_cfg_go2.py` 中的 `FINETUNE` 设为 `True`，并从 Go2 第一阶段 checkpoint 继续训练。
 
 ### 复现说明与实现调整
 
@@ -104,6 +117,30 @@ bash run_play.sh
 - AME 编码器实现: [rsl_rl/rsl_rl/modules/actor_critic_encoder.py](rsl_rl/rsl_rl/modules/actor_critic_encoder.py)
 - 训练脚本: [run_train.sh](run_train.sh)
 - 测试脚本: [run_play.sh](run_play.sh)
+
+| 类别     | 项                           | 当前权重   | 含义                                                                                                                                                                                                                                                                 |
+| -------- | ---------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 任务     | track_lin_vel_xy_exp         | +2.0       | 奖励机身 yaw 坐标系下的平面速度接近指令；误差采用指数核，std=0.25，误差越小越接近 1。                                                                                                                                                                                |
+| 任务     | track_ang_vel_z_exp          | +3.0       | 奖励世界系 z 轴角速度跟踪指令，同样用 std=0.25 的指数核。                                                                                                                                                                                                             |
+| 失败     | termination_penalty          | -200       | 非正常终止时施加大惩罚，促使不跌倒、不出界、不触发终止条件。                                                                                                                                                                                                          |
+| 稳定     | ang_vel_xy_l2                | -0.05      | 惩罚 roll/pitch 角速度平方，减少身体横滚、前后摆动。                                                                                                                                                                                                                 |
+| 稳定     | flat_orientation_l2          | -2.0       | 惩罚重力向量在机身 x/y 上的分量，鼓励躯干保持竖直。                                                                                                                                                                                                                  |
+| 碰撞     | undesired_contacts           | -1.0       | 非脚部（正则排除了 ankle）接触力超过阈值时惩罚，避免膝、躯干、手臂撞地。                                                                                                                                                                                              |
+| 平滑/能耗 | dof_torques_l2               | -1.5e-7    | 惩罚关节力矩平方。                                                                                                                                                                                                                                                   |
+| 平滑/能耗 | dof_acc_l2                   | -1.25e-7   | 惩罚关节加速度平方。                                                                                                                                                                                                                                                 |
+| 平滑/能耗 | dof_vel_l2                   | -0.001     | 惩罚关节速度平方。                                                                                                                                                                                                                                                   |
+| 平滑/能耗 | action_rate_l2               | -0.01      | 惩罚相邻时刻动作差，减少高频抖动。                                                                                                                                                                                                                                   |
+| 安全     | dof_pos_limits               | -1.0       | 惩罚超过关节位置限位。                                                                                                                                                                                                                                               |
+| 安全     | dof_torques_limits           | -0.01      | 惩罚超过允许力矩范围。                                                                                                                                                                                                                                               |
+| 步态     | feet_air_time                | +0.25      | 对行走命令下的双足腾空时间给予奖励，阈值 0.6 s，鼓励迈步而非拖步。                                                                                                                                                                                                   |
+| 步态     | feet_air_time_variance       | -0.7       | 惩罚两脚腾空/接触时间的方差，鼓励左右步态更均衡。                                                                                                                                                                                                                    |
+| 步态     | feet_slide                   | -0.1       | 足部接触地面时惩罚切向滑动。                                                                                                                                                                                                                                         |
+| 步态     | feet_stumble                 | -2.0       | 若脚的水平碰撞力超过竖直力的 4 倍，视为踢到垂直障碍并惩罚。自定义公式见 source/ame_locomotion/ame_locomotion/tasks/manager_based/ame_locomotion/mdp/rewards.py:81。                                                                                                      |
+| 步态     | feet_too_near                | -1.0       | 两脚距离小于 0.2 m 时惩罚，避免交叉或相互碰撞。                                                                                                                                                                                                                      |
+| 协调     | joint_coordination           | -0.2       | 惩罚左髋 pitch 与右肩 pitch、右髋 pitch 与左肩 pitch 的相对关节角不一致，塑造对侧摆臂—摆腿协调。                                                                                                                                                                       |
+| 姿态先验 | joint_deviation_hip          | -0.1       | 惩罚髋 yaw / roll 偏离默认姿态。                                                                                                                                                                                                                                     |
+| 姿态先验 | joint_deviation_arms         | -0.3       | 惩罚肩、肘、腕偏离默认姿态，防止手臂无意义大幅摆动。                                                                                                                                                                                                                 |
+| 姿态先验 | joint_deviation_waists       | -1.0       | 强力惩罚腰部偏离默认姿态。                                                                                                                                                                                                                                          |
 
 ---
 
