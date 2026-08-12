@@ -209,9 +209,9 @@ class EventCfg:
 class RewardsCfg:
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
     track_lin_vel_xy_exp = RewTerm(
-        func=mdp.track_lin_vel_xy_yaw_frame_exp,
-        weight=2.0,
-        params={"command_name": "base_velocity", "std": 0.25},
+        func=mdp.track_lin_vel_xy_clipped_exp,
+        weight=1.5,
+        params={"command_name": "base_velocity", "tracking_sigma": 0.15, "lin_vel_clip": 0.1},
     )
     track_ang_vel_z_exp = RewTerm(
         func=mdp.track_ang_vel_z_world_exp,
@@ -241,17 +241,16 @@ class RewardsCfg:
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0)
     feet_air_time = RewTerm(
         func=mdp.feet_air_time,
-        weight=0.125,
+        weight=0.5,
         params={
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
+                preserve_order=True,
+            ),
             "command_name": "base_velocity",
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
             "threshold": 0.5,
         },
-    )
-    feet_air_time_variance = RewTerm(
-        func=mdp.air_time_variance_penalty,
-        weight=-0.7,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
     )
     feet_slide = RewTerm(
         func=mdp.feet_slide,
@@ -263,7 +262,7 @@ class RewardsCfg:
     )
     feet_stumble = RewTerm(
         func=mdp.feet_stumble,
-        weight=-2.0,
+        weight=-0.1,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
     )
     stuck = RewTerm(
@@ -271,37 +270,25 @@ class RewardsCfg:
         weight=-1.0,
         params={"command_name": "base_velocity", "min_command": 0.1, "min_linear_velocity": 0.1},
     )
-    feet_gait = RewTerm(
-        func=mdp.feet_gait,
-        weight=0.2,
-        params={
-            "period": 0.5,
-            "offset": [0.0, 0.5, 0.5, 0.0],
-            "sensor_cfg": SceneEntityCfg(
-                "contact_forces",
-                body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
-                preserve_order=True,
-            ),
-            "threshold": 0.5,
-            "command_name": "base_velocity",
-        },
-    )
-    feet_swing_height = RewTerm(
-        func=mdp.feet_swing_height_penalty,
+    feet_edge = RewTerm(
+        func=mdp.feet_edge,
         weight=-1.0,
         params={
-            "sensor_cfg": SceneEntityCfg(
-                "contact_forces",
-                body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
-                preserve_order=True,
-            ),
+            "sensor_cfg": SceneEntityCfg("height_scanner"),
             "asset_cfg": SceneEntityCfg(
                 "robot",
                 body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
                 preserve_order=True,
             ),
-            "min_height_b": -0.25,
-            "min_air_time": 0.05,
+            "contact_sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
+                preserve_order=True,
+            ),
+            "edge_height_threshold": 0.08,
+            "nearest_k": 9,
+            "contact_threshold": 2.0,
+            "min_terrain_level": 3,
         },
     )
     joint_deviation_hip = RewTerm(
@@ -382,12 +369,10 @@ class Go2AMEEnvCfg(ManagerBasedRLEnvCfg):
             self.commands.base_velocity.ranges.lin_vel_x = (0.5, 1.5)
             self.rewards.action_rate_l2.weight = -0.05
             self.rewards.flat_orientation_l2.weight = -5.0
-            self.rewards.feet_air_time.weight = 0.125
-            self.rewards.feet_air_time_variance.weight = -1.0
+            self.rewards.feet_air_time.weight = 0.5
             self.rewards.feet_slide.weight = -0.3
-            self.rewards.feet_stumble.weight = -5.0
-            self.rewards.feet_gait.weight = 0.2
-            self.rewards.feet_swing_height.weight = -1.0
+            self.rewards.feet_stumble.weight = -0.1
+            self.rewards.feet_edge.weight = -1.0
 
 
 @configclass
@@ -404,14 +389,48 @@ class Go2AMEEnvCfg_PLAY(Go2AMEEnvCfg):
         terrain_generator.curriculum = False
         terrain_generator.size = (8.0, 8.0)
         terrain_generator.sub_terrains = {
-            "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
-                proportion=0.3,
-                step_height_range=(0.15, 0.15),
-                step_width=0.4,
-                platform_width=3.0,
-                border_width=1.0,
-                holes=False,
+            # "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
+            #     proportion=0.3,
+            #     step_height_range=(0.15, 0.15),
+            #     step_width=0.4,
+            #     platform_width=3.0,
+            #     border_width=1.0,
+            #     holes=False,
+            # ),
+            # "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+            #     proportion=0.3,
+            #     step_height_range=(0.15, 0.15),
+            #     step_width=0.3,
+            #     platform_width=3.0,
+            #     border_width=1.0,
+            #     holes=False,
+            # ),
+            # "boxes": terrain_gen.MeshRandomGridTerrainCfg(
+            #     proportion=0.2, grid_width=0.45, grid_height_range=(0.1, 0.1), platform_width=2.0
+            # ),
+            # "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
+            #     proportion=0.1, noise_range=(0.02, 0.1), noise_step=0.01, border_width=0.25
+            # ),
+            "hf_steppingstones": terrain_gen.HfSteppingStonesTerrainCfg(
+                proportion=1.0, stone_height_max=0.0, stone_width_range=(0.3, 0.3), stone_distance_range=(0.2, 0.2), platform_width=2.0,
+                holes_depth=-2.0, border_width=0.25
             ),
+            # "stonebridge": terrain_gen.HfStonesBridgeTerrainCfg(
+            #     proportion=1.0, platform_width=2.0, border_width=0.25, holes_depth=-2.0,
+            #     stone_height_max=0.0, stone_width_range=(0.3, 0.3), stone_distance_range=(0.2, 0.2),
+            #     stone_length_range=(0.4, 0.4), stone_lateral_distance_range=(0.0, 0.0)
+            # ),
+            # "stakes": terrain_gen.HfAlternateColumnStakesTerrainCfg(
+            #     proportion=0.5, stake_height_max=0.0, stake_side_range=(0.2, 0.2), stake_gap_range=(0.3, 0.3),
+            #     column_gap_range=(0.3, 0.3), column_jitter=0.0, holes_depth=-2.0, platform_width=2.0, border_width=0.25
+            # ),
+            # "hf_gaps": terrain_gen.HfConcentricGapTerrainCfg(
+            #             proportion=0.5, gap_width_range=(0.5, 0.5), platform_width=2.0, border_width=0.25, gap_depth=-1.0,
+            #             ground_width_range=(0.5, 0.5), ground_height_max=0.0
+            # ),
+            # "rails": terrain_gen.MeshRailsTerrainCfg(
+            #     proportion=0.1, rail_height_range=(0.30, 0.30), rail_thickness_range=(0.3, 0.3), platform_width=2.0
+            # ),
         }
         self.observations.policy.enable_corruption = False
         self.observations.policy.height_scan.params["noise"] = False

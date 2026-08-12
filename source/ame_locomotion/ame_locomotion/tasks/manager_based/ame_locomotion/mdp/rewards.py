@@ -8,7 +8,7 @@ import math
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import ManagerTermBase, SceneEntityCfg
-from isaaclab.sensors import ContactSensor
+from isaaclab.sensors import ContactSensor, RayCaster
 from isaaclab.utils.warp import raycast_mesh
 
 if TYPE_CHECKING:
@@ -248,26 +248,71 @@ def feet_gait(
     return reward
 
 
-def feet_swing_height_penalty(
+def track_lin_vel_xy_clipped_exp(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    tracking_sigma: float,
+    lin_vel_clip: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Reward base-frame linear-velocity tracking with bounded overspeed tolerance."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    command = env.command_manager.get_command(command_name)[:, :2]
+    velocity = asset.data.root_lin_vel_b[:, :2]
+    upper_bound = torch.where(command < 0.0, torch.full_like(command, 1.0e5), command + lin_vel_clip)
+    lower_bound = torch.where(command > 0.0, torch.full_like(command, -1.0e5), command - lin_vel_clip)
+    clipped_velocity = torch.clip(velocity, lower_bound, upper_bound)
+    velocity_error = torch.sum(torch.square(command - clipped_velocity), dim=1)
+    return torch.exp(-velocity_error / tracking_sigma)
+
+
+def feet_edge(
     env: ManagerBasedRLEnv,
     sensor_cfg: SceneEntityCfg,
     asset_cfg: SceneEntityCfg,
-    min_height_b: float,
-    min_air_time: float,
+    contact_sensor_cfg: SceneEntityCfg,
+    edge_height_threshold: float = 0.08,
+    nearest_k: int = 9,
+    contact_threshold: float = 2.0,
+    min_terrain_level: int | None = 3,
 ) -> torch.Tensor:
-    """Penalize swing feet that remain below a minimum body-frame height."""
-    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    """Penalize feet that make contact on terrain edges detected by the height scanner."""
     asset: Articulation = env.scene[asset_cfg.name]
+    sensor: RayCaster = env.scene.sensors[sensor_cfg.name]
+    contact_sensor: ContactSensor = env.scene.sensors[contact_sensor_cfg.name]
 
-    feet_pos_w = asset.data.body_pos_w[:, asset_cfg.body_ids, :]
-    feet_pos_b = math_utils.quat_apply_inverse(
-        asset.data.root_quat_w.unsqueeze(1).expand(-1, feet_pos_w.shape[1], -1),
-        feet_pos_w - asset.data.root_pos_w.unsqueeze(1),
+    feet_pos_w = asset.data.body_pos_w[:, asset_cfg.body_ids]
+    feet_pos_sensor = feet_pos_w - sensor.data.pos_w.unsqueeze(1)
+    sensor_quat = math_utils.yaw_quat(sensor.data.quat_w)
+    feet_quat = sensor_quat.unsqueeze(1).expand(env.num_envs, len(asset_cfg.body_ids), 4)
+    feet_pos_sensor = math_utils.quat_apply_inverse(
+        feet_quat.reshape(-1, 4), feet_pos_sensor.reshape(-1, 3)
+    ).reshape_as(feet_pos_sensor)
+
+    ray_pos_sensor = sensor.data.ray_hits_w - sensor.data.pos_w.unsqueeze(1)
+    num_rays = ray_pos_sensor.shape[1]
+    ray_quat = sensor_quat.unsqueeze(1).expand(env.num_envs, num_rays, 4)
+    ray_pos_sensor = math_utils.quat_apply_inverse(ray_quat.reshape(-1, 4), ray_pos_sensor.reshape(-1, 3)).reshape(
+        env.num_envs, num_rays, 3
     )
-    air_time = contact_sensor.data.current_air_time[:, sensor_cfg.body_ids]
-    is_swinging = air_time > min_air_time
-    height_error = torch.relu(min_height_b - feet_pos_b[:, :, 2])
-    return torch.sum(height_error * is_swinging, dim=1)
+    ray_pos_sensor = torch.nan_to_num(ray_pos_sensor)
+
+    distances = torch.linalg.vector_norm(
+        ray_pos_sensor[:, None, :, :2] - feet_pos_sensor[:, :, None, :2], dim=-1
+    )
+    ray_ids = torch.topk(distances, k=min(nearest_k, num_rays), dim=-1, largest=False).indices
+    local_heights = torch.gather(
+        ray_pos_sensor[:, None, :, 2].expand(-1, feet_pos_sensor.shape[1], -1), 2, ray_ids
+    )
+    feet_at_edge = local_heights.max(dim=-1).values - local_heights.min(dim=-1).values > edge_height_threshold
+    contact_forces = contact_sensor.data.net_forces_w_history[:, 0, contact_sensor_cfg.body_ids]
+    feet_in_contact = torch.linalg.vector_norm(contact_forces, dim=-1) > contact_threshold
+    penalty = torch.sum((feet_at_edge & feet_in_contact).float(), dim=1)
+
+    terrain_levels = getattr(getattr(env.scene, "terrain", None), "terrain_levels", None)
+    if min_terrain_level is not None and terrain_levels is not None:
+        penalty *= (terrain_levels > min_terrain_level).float()
+    return penalty
 
 
 """
