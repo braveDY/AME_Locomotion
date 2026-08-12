@@ -7,7 +7,7 @@ import math
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
-from isaaclab.envs import ManagerBasedRLEnvCfg, ViewerCfg
+from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
@@ -25,13 +25,7 @@ from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG
 
 from ame_locomotion.tasks.manager_based.ame_locomotion import mdp
 import ame_locomotion.tasks.manager_based.ame_locomotion.terrains as terrain_gen
-from ame_locomotion.tasks.manager_based.ame_locomotion.terrains.finetune_terrain_cfg import (
-    FINETUNE_ROUGH_TERRAINS_CFG,
-)
 from ame_locomotion.tasks.manager_based.ame_locomotion.terrains.terrain_cfg import ROUGH_TERRAINS_CFG
-
-
-FINETUNE = False
 
 
 @configclass
@@ -39,7 +33,7 @@ class Go2SceneCfg(InteractiveSceneCfg):
     terrain = TerrainImporterCfg(
         prim_path="/World/ground",
         terrain_type="generator",
-        terrain_generator=deepcopy(FINETUNE_ROUGH_TERRAINS_CFG if FINETUNE else ROUGH_TERRAINS_CFG),
+        terrain_generator=deepcopy(ROUGH_TERRAINS_CFG),
         max_init_terrain_level=5,
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
@@ -210,7 +204,7 @@ class RewardsCfg:
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
     track_lin_vel_xy_exp = RewTerm(
         func=mdp.track_lin_vel_xy_clipped_exp,
-        weight=1.5,
+        weight=3,
         params={"command_name": "base_velocity", "tracking_sigma": 0.15, "lin_vel_clip": 0.1},
     )
     track_ang_vel_z_exp = RewTerm(
@@ -223,7 +217,6 @@ class RewardsCfg:
         weight=500.0,
         params={"asset_cfg": SceneEntityCfg("robot"), "goal_offset_w": (3.0, 0.0)},
     )
-    ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
         weight=-1.0,
@@ -232,13 +225,7 @@ class RewardsCfg:
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_(hip|thigh|calf)"),
         },
     )
-    dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-1.5e-7)
-    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-1.25e-7)
-    dof_vel_l2 = RewTerm(func=mdp.joint_vel_l2, weight=-0.001)
-    dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-1.0)
-    dof_torques_limits = RewTerm(func=mdp.applied_torque_limits, weight=-0.01)
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
-    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0)
+
     feet_air_time = RewTerm(
         func=mdp.feet_air_time,
         weight=0.5,
@@ -267,35 +254,10 @@ class RewardsCfg:
     )
     stuck = RewTerm(
         func=mdp.stuck,
-        weight=-1.0,
+        weight=-3.0,
         params={"command_name": "base_velocity", "min_command": 0.1, "min_linear_velocity": 0.1},
     )
-    feet_edge = RewTerm(
-        func=mdp.feet_edge,
-        weight=-1.0,
-        params={
-            "sensor_cfg": SceneEntityCfg("height_scanner"),
-            "asset_cfg": SceneEntityCfg(
-                "robot",
-                body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
-                preserve_order=True,
-            ),
-            "contact_sensor_cfg": SceneEntityCfg(
-                "contact_forces",
-                body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
-                preserve_order=True,
-            ),
-            "edge_height_threshold": 0.08,
-            "nearest_k": 9,
-            "contact_threshold": 2.0,
-            "min_terrain_level": 3,
-        },
-    )
-    joint_deviation_hip = RewTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-0.1,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*_hip_joint")},
-    )
+
 
 
 @configclass
@@ -314,11 +276,6 @@ class TerminationsCfg:
 class CurriculumCfg:
     terrain_levels = CurrTerm(func=mdp.terrain_levels_vel)
 
-
-@configclass
-class MyViewerCfg(ViewerCfg):
-    eye = (0.0, 0.0, 4.0)
-    lookat = (0.0, 0.0, 0.0)
 
 
 @configclass
@@ -344,35 +301,9 @@ class Go2AMEEnvCfg(ManagerBasedRLEnvCfg):
         self.scene.contact_forces.update_period = self.sim.dt
         self.scene.terrain.terrain_generator.curriculum = self.curriculum.terrain_levels is not None
 
-        if not FINETUNE:
-            self.events.push_robot = None
-            self.events.add_base_mass = None
-            self.events.base_com = None
-            self.observations.policy.base_ang_vel.noise = None
-            self.observations.policy.projected_gravity.noise = None
-            self.observations.policy.velocity_commands.noise = None
-            self.observations.policy.joint_pos.noise = None
-            self.observations.policy.joint_vel.noise = None
-            self.observations.policy.height_scan.params["noise"] = False
-        else:
-            self.events.reset_base.params = {
-                "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)},
-                "velocity_range": {
-                    "x": (0.0, 0.0),
-                    "y": (0.0, 0.0),
-                    "z": (0.0, 0.0),
-                    "roll": (0.0, 0.0),
-                    "pitch": (0.0, 0.0),
-                    "yaw": (0.0, 0.0),
-                },
-            }
-            self.commands.base_velocity.ranges.lin_vel_x = (0.5, 1.5)
-            self.rewards.action_rate_l2.weight = -0.05
-            self.rewards.flat_orientation_l2.weight = -5.0
-            self.rewards.feet_air_time.weight = 0.5
-            self.rewards.feet_slide.weight = -0.3
-            self.rewards.feet_stumble.weight = -0.1
-            self.rewards.feet_edge.weight = -1.0
+        self.events.push_robot = None
+        self.events.add_base_mass = None
+        self.events.base_com = None
 
 
 @configclass
@@ -405,16 +336,16 @@ class Go2AMEEnvCfg_PLAY(Go2AMEEnvCfg):
             #     border_width=1.0,
             #     holes=False,
             # ),
-            # "boxes": terrain_gen.MeshRandomGridTerrainCfg(
-            #     proportion=0.2, grid_width=0.45, grid_height_range=(0.1, 0.1), platform_width=2.0
-            # ),
+            "boxes": terrain_gen.MeshRandomGridTerrainCfg(
+                proportion=0.2, grid_width=0.45, grid_height_range=(0.1, 0.1), platform_width=2.0
+            ),
             # "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
             #     proportion=0.1, noise_range=(0.02, 0.1), noise_step=0.01, border_width=0.25
             # ),
-            "hf_steppingstones": terrain_gen.HfSteppingStonesTerrainCfg(
-                proportion=1.0, stone_height_max=0.0, stone_width_range=(0.3, 0.3), stone_distance_range=(0.2, 0.2), platform_width=2.0,
-                holes_depth=-2.0, border_width=0.25
-            ),
+            # "hf_steppingstones": terrain_gen.HfSteppingStonesTerrainCfg(
+            #     proportion=1.0, stone_height_max=0.0, stone_width_range=(0.3, 0.3), stone_distance_range=(0.2, 0.2), platform_width=2.0,
+            #     holes_depth=-2.0, border_width=0.25
+            # ),
             # "stonebridge": terrain_gen.HfStonesBridgeTerrainCfg(
             #     proportion=1.0, platform_width=2.0, border_width=0.25, holes_depth=-2.0,
             #     stone_height_max=0.0, stone_width_range=(0.3, 0.3), stone_distance_range=(0.2, 0.2),
