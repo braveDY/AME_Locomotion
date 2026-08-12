@@ -80,14 +80,15 @@ class CommandsCfg:
         asset_name="robot",
         resampling_time_range=(10.0, 10.0),
         rel_standing_envs=0.0,
-        rel_heading_envs=0.0,
-        heading_command=False,
+        rel_heading_envs=1.0,
+        heading_command=True,
+        heading_control_stiffness=1.0,
         debug_vis=True,
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
             lin_vel_x=(0.5, 1.5),
             lin_vel_y=(0.0, 0.0),
-            ang_vel_z=(0.0, 0.0),
-            heading=None,
+            ang_vel_z=(-1.0, 1.0),
+            heading=(0.0, 0.0),
         ),
     )
 
@@ -214,8 +215,13 @@ class RewardsCfg:
     )
     track_ang_vel_z_exp = RewTerm(
         func=mdp.track_ang_vel_z_world_exp,
-        weight=0.0,
+        weight=1.0,
         params={"command_name": "base_velocity", "std": 0.25},
+    )
+    timeout_goal_progress = RewTerm(
+        func=mdp.TimeoutGoalProgressReward,
+        weight=500.0,
+        params={"asset_cfg": SceneEntityCfg("robot"), "goal_offset_w": (3.0, 0.0)},
     )
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
     undesired_contacts = RewTerm(
@@ -235,7 +241,7 @@ class RewardsCfg:
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0)
     feet_air_time = RewTerm(
         func=mdp.feet_air_time,
-        weight=0,
+        weight=0.125,
         params={
             "command_name": "base_velocity",
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
@@ -249,7 +255,7 @@ class RewardsCfg:
     )
     feet_slide = RewTerm(
         func=mdp.feet_slide,
-        weight=-0.1,
+        weight=-0.3,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
             "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
@@ -265,20 +271,37 @@ class RewardsCfg:
         weight=-1.0,
         params={"command_name": "base_velocity", "min_command": 0.1, "min_linear_velocity": 0.1},
     )
-    joint_coordination = RewTerm(
-        func=mdp.joint_coordination_rel,
-        weight=-0.1,
+    feet_gait = RewTerm(
+        func=mdp.feet_gait,
+        weight=0.2,
         params={
-            "asset_cfg": SceneEntityCfg("robot"),
-            "coord_joints": [
-                ["FL_hip_joint", "RR_hip_joint"],
-                ["FR_hip_joint", "RL_hip_joint"],
-                ["FL_thigh_joint", "RR_thigh_joint"],
-                ["FR_thigh_joint", "RL_thigh_joint"],
-                ["FL_calf_joint", "RR_calf_joint"],
-                ["FR_calf_joint", "RL_calf_joint"],
-            ],
-            "coord_signs": [[1.0, 1.0]] * 6,
+            "period": 0.5,
+            "offset": [0.0, 0.5, 0.5, 0.0],
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
+                preserve_order=True,
+            ),
+            "threshold": 0.5,
+            "command_name": "base_velocity",
+        },
+    )
+    feet_swing_height = RewTerm(
+        func=mdp.feet_swing_height_penalty,
+        weight=-1.0,
+        params={
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
+                preserve_order=True,
+            ),
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                body_names=["FL_foot", "FR_foot", "RL_foot", "RR_foot"],
+                preserve_order=True,
+            ),
+            "min_height_b": -0.25,
+            "min_air_time": 0.05,
         },
     )
     joint_deviation_hip = RewTerm(
@@ -359,10 +382,12 @@ class Go2AMEEnvCfg(ManagerBasedRLEnvCfg):
             self.commands.base_velocity.ranges.lin_vel_x = (0.5, 1.5)
             self.rewards.action_rate_l2.weight = -0.05
             self.rewards.flat_orientation_l2.weight = -5.0
-            self.rewards.feet_air_time.weight = 0
+            self.rewards.feet_air_time.weight = 0.125
             self.rewards.feet_air_time_variance.weight = -1.0
             self.rewards.feet_slide.weight = -0.3
             self.rewards.feet_stumble.weight = -5.0
+            self.rewards.feet_gait.weight = 0.2
+            self.rewards.feet_swing_height.weight = -1.0
 
 
 @configclass
@@ -373,39 +398,21 @@ class Go2AMEEnvCfg_PLAY(Go2AMEEnvCfg):
         self.scene.env_spacing = 2.5
         self.episode_length_s = 40.0
         self.scene.terrain.max_init_terrain_level = None
-        self.scene.visualize_cam = CameraCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/base/visualize_cam",
-            update_period=0.1,
-            height=480,
-            width=640,
-            data_types=["rgb"],
-            spawn=sim_utils.PinholeCameraCfg(
-                focal_length=24.0,
-                focus_distance=400.0,
-                horizontal_aperture=20.955,
-                clipping_range=(0.1, 1.0e5),
-            ),
-            offset=CameraCfg.OffsetCfg(
-                pos=(0.0, 0.0, 1.5),
-                rot=(0.707, 0.0, 0.707, 0.0),
-                convention="world",
-            ),
-        )
-        self.scene.terrain.max_init_terrain_level = None
         terrain_generator = self.scene.terrain.terrain_generator
-        if terrain_generator is not None:
-            terrain_generator.num_rows = 1
-            terrain_generator.num_cols = 1
-            terrain_generator.curriculum = False
-            terrain_generator.size = (8.0, 8.0)
-            terrain_generator.sub_terrains = {
-                "hf_gaps": terrain_gen.HfConcentricGapTerrainCfg(
-                            proportion=0.5, gap_width_range=(0.5, 0.5), platform_width=2.0, border_width=0.25, gap_depth=-1.0,
-                            ground_width_range=(0.5, 0.5), ground_height_max=0.0
-                ),
-            }
-        self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)
-        self.commands.base_velocity.ranges.heading = (0.0, 0.0)
+        terrain_generator.num_rows = 1
+        terrain_generator.num_cols = 1
+        terrain_generator.curriculum = False
+        terrain_generator.size = (8.0, 8.0)
+        terrain_generator.sub_terrains = {
+            "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
+                proportion=0.3,
+                step_height_range=(0.15, 0.15),
+                step_width=0.4,
+                platform_width=3.0,
+                border_width=1.0,
+                holes=False,
+            ),
+        }
         self.observations.policy.enable_corruption = False
         self.observations.policy.height_scan.params["noise"] = False
         self.events.base_external_force_torque = None

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import torch
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 import math
 
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import Articulation, RigidObject
-from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import ManagerTermBase, SceneEntityCfg
 from isaaclab.sensors import ContactSensor
 from isaaclab.utils.warp import raycast_mesh
 
@@ -168,6 +169,37 @@ def stuck(
     return ((command[:, 0] > min_command) & (asset.data.root_lin_vel_b[:, 0] < min_linear_velocity)).float()
 
 
+class TimeoutGoalProgressReward(ManagerTermBase):
+    """Reward normalized progress toward a reset-relative world-frame goal at timeout."""
+
+    def __init__(self, cfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self.goal_offset_w = torch.tensor(cfg.params["goal_offset_w"], device=env.device)
+        self.initial_pos_w = torch.zeros(env.num_envs, 2, device=env.device)
+        self.goal_pos_w = torch.zeros_like(self.initial_pos_w)
+        self.initial_goal_distance = torch.zeros(env.num_envs, device=env.device)
+
+    def reset(self, env_ids: Sequence[int] | None = None) -> None:
+        if env_ids is None:
+            env_ids = slice(None)
+        asset_cfg = self.cfg.params["asset_cfg"]
+        asset: Articulation = self._env.scene[asset_cfg.name]
+        self.initial_pos_w[env_ids] = asset.data.root_pos_w[env_ids, :2]
+        self.goal_pos_w[env_ids] = self.initial_pos_w[env_ids] + self.goal_offset_w
+        self.initial_goal_distance[env_ids] = torch.linalg.vector_norm(self.goal_offset_w)
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        asset_cfg: SceneEntityCfg,
+        goal_offset_w: tuple[float, float],
+    ) -> torch.Tensor:
+        asset: Articulation = env.scene[asset_cfg.name]
+        current_goal_distance = torch.linalg.vector_norm(asset.data.root_pos_w[:, :2] - self.goal_pos_w, dim=1)
+        progress = 1.0 - current_goal_distance / self.initial_goal_distance.clamp_min(1.0e-6)
+        return progress.clamp(min=0.0, max=1.0) * env.termination_manager.time_outs.float()
+
+
 def air_time_variance_penalty(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
     """Penalize variance in the amount of time each foot spends in the air/on the ground relative to each other"""
     # extract the used quantities (to enable type-hinting)
@@ -214,6 +246,28 @@ def feet_gait(
         cmd_norm = torch.norm(env.command_manager.get_command(command_name), dim=1)
         reward *= cmd_norm > 0.1
     return reward
+
+
+def feet_swing_height_penalty(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    asset_cfg: SceneEntityCfg,
+    min_height_b: float,
+    min_air_time: float,
+) -> torch.Tensor:
+    """Penalize swing feet that remain below a minimum body-frame height."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    asset: Articulation = env.scene[asset_cfg.name]
+
+    feet_pos_w = asset.data.body_pos_w[:, asset_cfg.body_ids, :]
+    feet_pos_b = math_utils.quat_apply_inverse(
+        asset.data.root_quat_w.unsqueeze(1).expand(-1, feet_pos_w.shape[1], -1),
+        feet_pos_w - asset.data.root_pos_w.unsqueeze(1),
+    )
+    air_time = contact_sensor.data.current_air_time[:, sensor_cfg.body_ids]
+    is_swinging = air_time > min_air_time
+    height_error = torch.relu(min_height_b - feet_pos_b[:, :, 2])
+    return torch.sum(height_error * is_swinging, dim=1)
 
 
 """
