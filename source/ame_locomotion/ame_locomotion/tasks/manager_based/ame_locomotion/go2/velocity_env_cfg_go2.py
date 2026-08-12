@@ -80,15 +80,14 @@ class CommandsCfg:
         asset_name="robot",
         resampling_time_range=(10.0, 10.0),
         rel_standing_envs=0.0,
-        rel_heading_envs=1.0,
-        heading_command=True,
-        heading_control_stiffness=0.5,
+        rel_heading_envs=0.0,
+        heading_command=False,
         debug_vis=True,
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(0.0, 1.5),
+            lin_vel_x=(0.5, 1.5),
             lin_vel_y=(0.0, 0.0),
-            ang_vel_z=(-1.0, 1.0),
-            heading=(-math.pi, math.pi),
+            ang_vel_z=(0.0, 0.0),
+            heading=None,
         ),
     )
 
@@ -215,7 +214,7 @@ class RewardsCfg:
     )
     track_ang_vel_z_exp = RewTerm(
         func=mdp.track_ang_vel_z_world_exp,
-        weight=3.0,
+        weight=0.0,
         params={"command_name": "base_velocity", "std": 0.25},
     )
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
@@ -260,6 +259,11 @@ class RewardsCfg:
         func=mdp.feet_stumble,
         weight=-2.0,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
+    )
+    stuck = RewTerm(
+        func=mdp.stuck,
+        weight=-1.0,
+        params={"command_name": "base_velocity", "min_command": 0.1, "min_linear_velocity": 0.1},
     )
     joint_coordination = RewTerm(
         func=mdp.joint_coordination_rel,
@@ -352,8 +356,7 @@ class Go2AMEEnvCfg(ManagerBasedRLEnvCfg):
                     "yaw": (0.0, 0.0),
                 },
             }
-            self.commands.base_velocity.ranges.lin_vel_x = (0.0, 1.5)
-            self.commands.base_velocity.ranges.heading = (0.0, 0.0)
+            self.commands.base_velocity.ranges.lin_vel_x = (0.5, 1.5)
             self.rewards.action_rate_l2.weight = -0.05
             self.rewards.flat_orientation_l2.weight = -5.0
             self.rewards.feet_air_time.weight = 0

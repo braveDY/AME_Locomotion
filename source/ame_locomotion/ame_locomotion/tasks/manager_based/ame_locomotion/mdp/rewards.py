@@ -155,6 +155,19 @@ def feet_contact_without_cmd(
     return reward * (command_norm < 0.1)
 
 
+def stuck(
+    env: ManagerBasedRLEnv,
+    command_name: str = "base_velocity",
+    min_command: float = 0.1,
+    min_linear_velocity: float = 0.1,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize robots that fail to move forward under a forward command."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    command = env.command_manager.get_command(command_name)
+    return ((command[:, 0] > min_command) & (asset.data.root_lin_vel_b[:, 0] < min_linear_velocity)).float()
+
+
 def air_time_variance_penalty(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
     """Penalize variance in the amount of time each foot spends in the air/on the ground relative to each other"""
     # extract the used quantities (to enable type-hinting)
