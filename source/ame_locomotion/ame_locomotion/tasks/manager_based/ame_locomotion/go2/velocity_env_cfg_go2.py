@@ -258,6 +258,34 @@ class RewardsCfg:
         params={"command_name": "base_velocity", "min_command": 0.1, "min_linear_velocity": 0.1},
     )
 
+    dof_torques_l2 = RewTerm(
+        func=mdp.joint_torques_l2,
+        weight=-1.5e-7,
+    )  # 惩罚所有关节实际施加力矩的平方和；抑制高能耗和激进驱动，负权重使力矩越大总奖励越低。
+    dof_acc_l2 = RewTerm(
+        func=mdp.joint_acc_l2,
+        weight=-1.25e-7,
+    )  # 惩罚所有关节加速度的平方和；减少突发加减速，使关节运动更平滑、降低机械冲击。
+    dof_vel_l2 = RewTerm(
+        func=mdp.joint_vel_l2,
+        weight=-0.001,
+    )  # 惩罚所有关节角速度的平方和；避免持续高速摆腿或抖动，权重高于前两项以更强约束速度。
+    dof_pos_limits = RewTerm(
+        func=mdp.joint_pos_limits,
+        weight=-1.0,
+    )  # 仅当关节位置越过软限位时，按越界幅度求和惩罚；引导策略远离机械关节行程边界。
+    dof_torques_limits = RewTerm(
+        func=mdp.applied_torque_limits,
+        weight=-0.01,
+    )  # 惩罚执行器因力矩限幅而未能输出的力矩差；鼓励动作保持在可实现的执行器力矩范围内。
+    action_rate_l2 = RewTerm(
+        func=mdp.action_rate_l2,
+        weight=-0.01,
+    )  # 惩罚当前动作与上一步动作之差的平方和；限制动作变化率，减少控制指令跳变和抖振。
+    flat_orientation_l2 = RewTerm(
+        func=mdp.flat_orientation_l2,
+        weight=-2.0,
+    )  # 惩罚机身坐标系中重力投影的 x、y 分量平方和；机身越偏离水平，惩罚越大。
 
 
 @configclass
@@ -304,6 +332,7 @@ class Go2AMEEnvCfg(ManagerBasedRLEnvCfg):
         self.events.push_robot = None
         self.events.add_base_mass = None
         self.events.base_com = None
+
 
 
 @configclass
