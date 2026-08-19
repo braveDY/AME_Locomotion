@@ -118,7 +118,7 @@ class ActorCriticEncoder(nn.Module):
             f"Coord dim={self.coord_embed_dim}, MHA dim={self.mha_dim}, heads={self.num_heads}"
         )
 
-    def _encode_terrain(self, obs):
+    def _encode_terrain(self, obs, need_weights: bool = False):
         """Encode terrain/map observations into attention-ready features."""
         # Extract map scan from the tail of observation.
         map_scan = obs[:, -self.L * self.W * self.coord_dim:].reshape(-1, self.W, self.L, self.coord_dim)
