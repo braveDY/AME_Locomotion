@@ -279,9 +279,9 @@ class UnitreeGo2CustomEnvCfg_PLAY(UnitreeGo2CustomEnvCfg):
         # Select one terrain by uncommenting its entry and commenting out others.
         self.scene.terrain.terrain_generator.sub_terrains = {
             # === 1. 经典粗糙地形 (ROUGH_TERRAINS_CFG 标准预设) ===
-            # "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
-            #     proportion=1.0, noise_range=(0.02, 0.10), noise_step=0.02, border_width=0.25
-            # ),  # 随机起伏粗糙地面 (Continuous Rough Terrain)
+            "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
+                proportion=1.0, noise_range=(0.02, 0.10), noise_step=0.02, border_width=0.25
+            ),  # 随机起伏粗糙地面 (Continuous Rough Terrain)
             # "boxes": terrain_gen.MeshRandomGridTerrainCfg(
             #     proportion=1.0, grid_width=0.45, grid_height_range=(0.05, 0.2), platform_width=2.0
             # ),  # 离散随机高低方块网格 (Discrete Boxes Grid)
