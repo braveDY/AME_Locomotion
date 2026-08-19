@@ -121,7 +121,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     agent_cfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
     agent_cfg = handle_deprecated_rsl_rl_cfg(agent_cfg, installed_version)
-    if version.parse(installed_version) < version.parse("4.0.0"):
+    if version.parse(installed_version) < version.parse("4.0.0") and hasattr(
+        agent_cfg.algorithm, "share_cnn_encoders"
+    ):
         del agent_cfg.algorithm.share_cnn_encoders
     agent_cfg.max_iterations = (
         args_cli.max_iterations if args_cli.max_iterations is not None else agent_cfg.max_iterations

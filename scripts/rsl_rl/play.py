@@ -106,7 +106,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     agent_cfg: RslRlBaseRunnerCfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
     agent_cfg = handle_deprecated_rsl_rl_cfg(agent_cfg, installed_rsl_rl_version)
-    if version.parse(installed_rsl_rl_version) < version.parse("4.0.0"):
+    if version.parse(installed_rsl_rl_version) < version.parse("4.0.0") and hasattr(
+        agent_cfg.algorithm, "share_cnn_encoders"
+    ):
         del agent_cfg.algorithm.share_cnn_encoders
 
     # set the environment seed

@@ -35,6 +35,12 @@ G1 使用两阶段训练。第一阶段结束后，将
 
 ```bash
 python scripts/rsl_rl/train.py --task AME-Go2-v0 --headless
+python scripts/rsl_rl/train.py \
+  --task AME-Go2-Custom-v0 \
+  --headless \
+  --num_envs 2048 \
+  --max_iterations 4000
+
 
 python scripts/rsl_rl/play.py \
   --task AME-Go2-Play-v0 \
@@ -43,3 +49,16 @@ python scripts/rsl_rl/play.py \
 ```
 
 rsync -avzP --ignore-existing isaaclab:/root/IsaacLab/logs .
+rsync -avzP --ignore-existing isaaclab:/root/AME_Locomotion/logs .
+
+python scripts/rsl_rl/play.py \
+  --task AME-Go2-Custom-Play-v0 \
+  --checkpoint logs/rsl_rl/go2_ame/2026-08-12_23-52-36/model_3999.pt \
+  --vis_attention
+
+
+
+python scripts/rsl_rl/play.py \
+  --task AME-G1-29DOF-Play-v0 \
+  --checkpoint pretrained/ame1.pt \
+  --vis_attention

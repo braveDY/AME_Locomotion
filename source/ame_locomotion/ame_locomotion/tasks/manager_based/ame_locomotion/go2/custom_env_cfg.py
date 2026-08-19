@@ -29,6 +29,7 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 from ame_locomotion.tasks.manager_based.ame_locomotion import mdp
+import ame_locomotion.tasks.manager_based.ame_locomotion.terrains as terrain_gen
 
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
@@ -258,3 +259,80 @@ class UnitreeGo2CustomEnvCfg(ManagerBasedRLEnvCfg):
         self.scene.terrain.terrain_generator.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
         self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
         self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_step = 0.01
+
+
+@configclass
+class UnitreeGo2CustomEnvCfg_PLAY(UnitreeGo2CustomEnvCfg):
+    """Play configuration for the custom Go2 AME environment."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.scene.num_envs = 1
+        self.scene.env_spacing = 2.5
+        self.episode_length_s = 40.0
+        self.scene.terrain.max_init_terrain_level = None
+        self.scene.terrain.terrain_generator.curriculum = False
+        self.scene.terrain.terrain_generator.num_rows = 1
+        self.scene.terrain.terrain_generator.num_cols = 1
+        self.scene.terrain.terrain_generator.size = (8.0, 8.0)
+
+        # Select exactly one terrain by uncommenting its entry and commenting out "boxes".
+        self.scene.terrain.terrain_generator.sub_terrains = {
+            # "boxes": terrain_gen.MeshRandomGridTerrainCfg(
+            #     proportion=1.0, grid_width=0.45, grid_height_range=(0.1, 0.1), platform_width=2.0
+            # ),
+            # "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
+            #     proportion=1.0, step_height_range=(0.15, 0.15), step_width=0.3,
+            #     platform_width=3.0, border_width=1.0, holes=False,
+            # ),
+            # "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+            #     proportion=1.0, step_height_range=(0.15, 0.15), step_width=0.3,
+            #     platform_width=3.0, border_width=1.0, holes=False,
+            # ),
+            "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
+                proportion=1.0, noise_range=(0.02, 0.1), noise_step=0.01,
+                downsampled_scale=0.1, border_width=0.25,
+            ),
+            # "hf_pyramid_slope": terrain_gen.HfPyramidSlopedTerrainCfg(
+            #     proportion=1.0, slope_range=(0.2, 0.2), platform_width=2.0, border_width=0.25,
+            # ),
+            # "hf_pyramid_slope_inv": terrain_gen.HfInvertedPyramidSlopedTerrainCfg(
+            #     proportion=1.0, slope_range=(0.2, 0.2), platform_width=2.0, border_width=0.25,
+            # ),
+            # "hf_steppingstones": terrain_gen.HfSteppingStonesTerrainCfg(
+            #     proportion=1.0, stone_height_max=0.05, stone_width_range=(0.25, 0.5),
+            #     stone_distance_range=(0.05, 0.25), platform_width=2.0, holes_depth=-2.0, border_width=0.25,
+            # ),
+            # "hf_gaps": terrain_gen.HfConcentricGapTerrainCfg(
+            #     proportion=1.0, gap_width_range=(0.2, 0.3), ground_width_range=(0.5, 0.5),
+            #     ground_height_max=0.03, gap_depth=-2.0, platform_width=2.0, border_width=0.25,
+            # ),
+            # "stakes1": terrain_gen.HfDoubleColumnStakesTerrainCfg(
+            #     proportion=1.0, stake_height_max=0.03, stake_side_range=(0.2, 0.4),
+            #     stake_gap_range=(0.1, 0.3), column_gap_range=(0.1, 0.1), column_jitter=0.0,
+            #     holes_depth=-2.0, platform_width=2.0, border_width=0.25,
+            # ),
+            # "stakes2": terrain_gen.HfAlternateColumnStakesTerrainCfg(
+            #     proportion=1.0, stake_height_max=0.03, stake_side_range=(0.2, 0.4),
+            #     stake_gap_range=(0.05, 0.15), column_gap_range=(0.0, 0.2), column_jitter=0.0,
+            #     holes_depth=-2.0, platform_width=2.0, border_width=0.25,
+            # ),
+            # "stakes3": terrain_gen.HfAlternateColumnStakesTerrainCfg(
+            #     proportion=1.0, stake_height_max=0.03, stake_side_range=(0.2, 0.4),
+            #     stake_gap_range=(0.05, 0.25), column_gap_range=(0.3, 0.2), column_jitter=0.0,
+            #     holes_depth=-2.0, platform_width=2.0, border_width=0.25,
+            # ),
+            # "stonebridge": terrain_gen.HfStonesBridgeTerrainCfg(
+            #     proportion=1.0, stone_height_max=0.03, stone_width_range=(0.25, 0.35),
+            #     stone_length_range=(0.6, 1.0), stone_distance_range=(0.3, 0.5),
+            #     stone_lateral_distance_range=(0.0, 0.0), holes_depth=-2.0,
+            #     platform_width=2.0, border_width=0.25,
+            # ),
+            # "rails": terrain_gen.MeshRailsTerrainCfg(
+            #     proportion=1.0, rail_height_range=(0.05, 0.25), rail_thickness_range=(0.1, 0.3),
+            #     platform_width=2.0,
+            # ),
+        }
+        self.observations.policy.enable_corruption = False
+        self.observations.policy.height_scan.params["noise"] = False
+        self.events.base_external_force_torque = None

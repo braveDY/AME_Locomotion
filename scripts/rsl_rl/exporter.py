@@ -74,14 +74,19 @@ class _TorchPolicyExporter(torch.nn.Module):
             if self.attach_global:
                 self.global_encoder = copy.deepcopy(policy.global_encoder)
                 self.query_projector = copy.deepcopy(policy.query_projector)
+            else:
+                # TorchScript compiles both branches of ``_encode_terrain``.
+                # Register no-op modules so the disabled global branch still
+                # has all referenced module attributes.
+                self.global_encoder = torch.nn.Identity()
+                self.query_projector = torch.nn.Identity()
             
             # Move modules to CPU
             self.map_cnn.cpu()
             self.mha.cpu()
             self.actor_proprio_embedding.cpu()
-            if self.attach_global:
-                self.global_encoder.cpu()
-                self.query_projector.cpu()
+            self.global_encoder.cpu()
+            self.query_projector.cpu()
         # --------------------------------------------------------
 
         # copy policy parameters
@@ -142,6 +147,8 @@ class _TorchPolicyExporter(torch.nn.Module):
 
         # Proprioceptive embedding
         proprio_embedding = self.actor_proprio_embedding(proprio_obs)
+        # Initialize for TorchScript's static definite-assignment analysis.
+        global_features_max = torch.zeros_like(local_features[:, 0, :])
 
         if self.attach_global:
             global_features = self.global_encoder(local_features)
@@ -228,13 +235,15 @@ class _OnnxPolicyExporter(torch.nn.Module):
             if self.attach_global:
                 self.global_encoder = copy.deepcopy(policy.global_encoder)
                 self.query_projector = copy.deepcopy(policy.query_projector)
+            else:
+                self.global_encoder = torch.nn.Identity()
+                self.query_projector = torch.nn.Identity()
             
             self.map_cnn.cpu()
             self.mha.cpu()
             self.actor_proprio_embedding.cpu()
-            if self.attach_global:
-                self.global_encoder.cpu()
-                self.query_projector.cpu()
+            self.global_encoder.cpu()
+            self.query_projector.cpu()
         # --------------------------------------------------------
 
         # copy policy parameters
@@ -297,6 +306,8 @@ class _OnnxPolicyExporter(torch.nn.Module):
 
         # Proprio Embedding & MHA
         proprio_embedding = self.actor_proprio_embedding(proprio_obs)
+        # Initialize for TorchScript's static definite-assignment analysis.
+        global_features_max = torch.zeros_like(local_features[:, 0, :])
         if self.attach_global:
             global_features = self.global_encoder(local_features)
             global_features_max, _ = torch.max(global_features, dim=1)
