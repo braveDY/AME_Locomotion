@@ -1,30 +1,22 @@
-# Copyright (c) 2021-2025, ETH Zurich and NVIDIA CORPORATION
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
-
 from __future__ import annotations
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from itertools import chain
 
-from rsl_rl.modules import ActorCritic, ActorCriticEncoder
-from rsl_rl.modules.rnd import RandomNetworkDistillation
+from rsl_rl.modules import ActorCriticEncoder
 from rsl_rl.storage import RolloutStorage
-from rsl_rl.utils import string_to_callable
 
 
 class PPO:
     """Proximal Policy Optimization algorithm (https://arxiv.org/abs/1707.06347)."""
 
-    policy: ActorCritic
+    policy: ActorCriticEncoder
     """The actor critic module."""
 
     def __init__(
         self,
-        policy,
+        policy: ActorCriticEncoder,
         num_learning_epochs=5,
         num_mini_batches=4,
         clip_param=0.2,
@@ -39,12 +31,8 @@ class PPO:
         desired_kl=0.01,
         device="cpu",
         normalize_advantage_per_mini_batch=False,
-        # RND parameters
-        rnd_cfg: dict | None = None,
-        # Symmetry parameters
-        symmetry_cfg: dict | None = None,
-        # Distributed training parameters
         multi_gpu_cfg: dict | None = None,
+        **kwargs,
     ):
         # device-related parameters
         self.device = device
@@ -57,39 +45,8 @@ class PPO:
             self.gpu_global_rank = 0
             self.gpu_world_size = 1
 
-        # RND components
-        if rnd_cfg is not None:
-            # Extract parameters used in ppo
-            rnd_lr = rnd_cfg.pop("learning_rate", 1e-3)
-            # Create RND module
-            self.rnd = RandomNetworkDistillation(device=self.device, **rnd_cfg)
-            # Create RND optimizer
-            params = self.rnd.predictor.parameters()
-            self.rnd_optimizer = optim.Adam(params, lr=rnd_lr)
-        else:
-            self.rnd = None
-            self.rnd_optimizer = None
-
-        # Symmetry components
-        if symmetry_cfg is not None:
-            # Check if symmetry is enabled
-            use_symmetry = symmetry_cfg["use_data_augmentation"] or symmetry_cfg["use_mirror_loss"]
-            # Print that we are not using symmetry
-            if not use_symmetry:
-                print("Symmetry not used for learning. We will use it for logging instead.")
-            # If function is a string then resolve it to a function
-            if isinstance(symmetry_cfg["data_augmentation_func"], str):
-                symmetry_cfg["data_augmentation_func"] = string_to_callable(symmetry_cfg["data_augmentation_func"])
-            # Check valid configuration
-            if symmetry_cfg["use_data_augmentation"] and not callable(symmetry_cfg["data_augmentation_func"]):
-                raise ValueError(
-                    "Data augmentation enabled but the function is not callable:"
-                    f" {symmetry_cfg['data_augmentation_func']}"
-                )
-            # Store symmetry configuration
-            self.symmetry = symmetry_cfg
-        else:
-            self.symmetry = None
+        self.rnd = None
+        self.symmetry = None
 
         # PPO components
         self.policy = policy

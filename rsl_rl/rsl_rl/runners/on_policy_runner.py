@@ -15,7 +15,7 @@ from collections import deque
 import rsl_rl
 from rsl_rl.algorithms import PPO
 from rsl_rl.env import VecEnv
-from rsl_rl.modules import ActorCritic, ActorCriticEncoder, resolve_rnd_config, resolve_symmetry_config
+from rsl_rl.modules import ActorCriticEncoder
 from rsl_rl.utils import resolve_obs_groups, store_code_state
 
 
@@ -38,10 +38,7 @@ class OnPolicyRunner:
 
         # query observations from environment for algorithm construction
         obs = self.env.get_observations()
-        default_sets = ["critic"]
-        if "rnd_cfg" in self.alg_cfg and self.alg_cfg["rnd_cfg"] is not None:
-            default_sets.append("rnd_state")
-        self.cfg["obs_groups"] = resolve_obs_groups(obs, self.cfg["obs_groups"], default_sets)
+        self.cfg["obs_groups"] = resolve_obs_groups(obs, self.cfg["obs_groups"], ["critic"])
 
         # create the algorithm
         self.alg = self._construct_algorithm(obs)
@@ -401,27 +398,9 @@ class OnPolicyRunner:
 
     def _construct_algorithm(self, obs) -> PPO:
         """Construct the actor-critic algorithm."""
-        # resolve RND config
-        self.alg_cfg = resolve_rnd_config(self.alg_cfg, obs, self.cfg["obs_groups"], self.env)
-
-        # resolve symmetry config
-        self.alg_cfg = resolve_symmetry_config(self.alg_cfg, self.env)
-
-        # resolve deprecated normalization config
-        if self.cfg.get("empirical_normalization") is not None:
-            warnings.warn(
-                "The `empirical_normalization` parameter is deprecated. Please set `actor_obs_normalization` and "
-                "`critic_obs_normalization` as part of the `policy` configuration instead.",
-                DeprecationWarning,
-            )
-            if self.policy_cfg.get("actor_obs_normalization") is None:
-                self.policy_cfg["actor_obs_normalization"] = self.cfg["empirical_normalization"]
-            if self.policy_cfg.get("critic_obs_normalization") is None:
-                self.policy_cfg["critic_obs_normalization"] = self.cfg["empirical_normalization"]
-
         # initialize the actor-critic
         actor_critic_class = eval(self.policy_cfg.pop("class_name"))
-        actor_critic: ActorCritic | ActorCriticEncoder = actor_critic_class(
+        actor_critic: ActorCriticEncoder = actor_critic_class(
             obs, self.cfg["obs_groups"], self.env.num_actions, **self.policy_cfg
         ).to(self.device)
 
