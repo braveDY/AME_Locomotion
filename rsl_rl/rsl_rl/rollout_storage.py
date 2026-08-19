@@ -8,7 +8,7 @@ from __future__ import annotations
 import torch
 from tensordict import TensorDict
 
-from rsl_rl.utils import split_and_pad_trajectories
+from .utils import split_and_pad_trajectories
 
 
 class RolloutStorage:

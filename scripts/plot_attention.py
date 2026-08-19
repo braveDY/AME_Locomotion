@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-from rsl_rl.utils import PROJ_ROOT_DIR
+from rsl_rl import PROJ_ROOT_DIR
 
 # Load attention weights
 attn_weights = np.load(os.path.join(PROJ_ROOT_DIR, 'attention_weights.npy'))  # (200, 1, 1, 187)

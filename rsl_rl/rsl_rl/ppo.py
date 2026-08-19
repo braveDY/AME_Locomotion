@@ -4,8 +4,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from rsl_rl.modules import ActorCriticEncoder
-from rsl_rl.storage import RolloutStorage
+from .actor_critic_encoder import ActorCriticEncoder
+from .rollout_storage import RolloutStorage
 
 
 class PPO:

@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.distributions import Normal
 
-from rsl_rl.networks import MLP
+from .mlp import MLP
 
 
 class ActorCriticEncoder(nn.Module):

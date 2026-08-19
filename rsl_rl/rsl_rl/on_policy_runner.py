@@ -12,11 +12,10 @@ import torch
 import warnings
 from collections import deque
 
-import rsl_rl
-from rsl_rl.algorithms import PPO
-from rsl_rl.env import VecEnv
-from rsl_rl.modules import ActorCriticEncoder
-from rsl_rl.utils import resolve_obs_groups, store_code_state
+from .ppo import PPO
+from .vec_env import VecEnv
+from .actor_critic_encoder import ActorCriticEncoder
+from .utils import resolve_obs_groups, store_code_state
 
 
 class OnPolicyRunner:
@@ -53,7 +52,7 @@ class OnPolicyRunner:
         self.tot_timesteps = 0
         self.tot_time = 0
         self.current_learning_iteration = 0
-        self.git_status_repos = [rsl_rl.__file__]
+        self.git_status_repos = [__file__]
 
     def learn(self, num_learning_iterations: int, init_at_random_ep_len: bool = False):  # noqa: C901
         # initialize writer

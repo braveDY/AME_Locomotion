@@ -15,7 +15,7 @@ import math
 from packaging import version
 
 from isaaclab.app import AppLauncher
-from rsl_rl.utils import PROJ_ROOT_DIR
+from rsl_rl import PROJ_ROOT_DIR
 
 # local imports
 import cli_args  # isort: skip
@@ -30,7 +30,7 @@ parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
 )
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
-parser.add_argument("--task", type=str, default="AME-G1-29DOF-Play-v0", help="Name of the task.")
+parser.add_argument("--task", type=str, default="AME-Go2-Custom-Play-v0", help="Name of the task.")
 parser.add_argument(
     "--agent", type=str, default="rsl_rl_cfg_entry_point", help="Name of the RL agent configuration entry point."
 )
@@ -72,7 +72,7 @@ from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 import isaaclab.sim as sim_utils
 from typing import Optional
 
-from rsl_rl.runners import DistillationRunner, OnPolicyRunner
+from rsl_rl import OnPolicyRunner
 
 from isaaclab.envs import (
     DirectMARLEnv,
