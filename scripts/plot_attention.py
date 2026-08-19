@@ -7,8 +7,14 @@ from rsl_rl.utils import PROJ_ROOT_DIR
 attn_weights = np.load(os.path.join(PROJ_ROOT_DIR, 'attention_weights.npy'))  # (200, 1, 1, 187)
 steps = attn_weights.shape[0]
 
-# Map size: 17x11
-map_h, map_w = 17, 11
+# Auto-detect map size from attention sequence length
+src_len = attn_weights.shape[-1]
+if src_len == 693:
+    map_h, map_w = 33, 21
+elif src_len == 187:
+    map_h, map_w = 17, 11
+else:
+    map_h, map_w = 33, 21  # default to 33x21
 
 # Create output folder
 save_dir = os.path.join(PROJ_ROOT_DIR, 'attn_vis')

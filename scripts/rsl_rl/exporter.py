@@ -70,23 +70,11 @@ class _TorchPolicyExporter(torch.nn.Module):
             self.map_cnn = copy.deepcopy(policy.map_cnn)
             self.mha = copy.deepcopy(policy.mha)
             self.actor_proprio_embedding = copy.deepcopy(policy.actor_proprio_embedding)
-            self.attach_global = getattr(policy, "attach_global", False)
-            if self.attach_global:
-                self.global_encoder = copy.deepcopy(policy.global_encoder)
-                self.query_projector = copy.deepcopy(policy.query_projector)
-            else:
-                # TorchScript compiles both branches of ``_encode_terrain``.
-                # Register no-op modules so the disabled global branch still
-                # has all referenced module attributes.
-                self.global_encoder = torch.nn.Identity()
-                self.query_projector = torch.nn.Identity()
             
             # Move modules to CPU
             self.map_cnn.cpu()
             self.mha.cpu()
             self.actor_proprio_embedding.cpu()
-            self.global_encoder.cpu()
-            self.query_projector.cpu()
         # --------------------------------------------------------
 
         # copy policy parameters
@@ -147,15 +135,6 @@ class _TorchPolicyExporter(torch.nn.Module):
 
         # Proprioceptive embedding
         proprio_embedding = self.actor_proprio_embedding(proprio_obs)
-        # Initialize for TorchScript's static definite-assignment analysis.
-        global_features_max = torch.zeros_like(local_features[:, 0, :])
-
-        if self.attach_global:
-            global_features = self.global_encoder(local_features)
-            global_features_max, _ = torch.max(global_features, dim=1)
-            query_input = torch.cat([global_features_max, proprio_embedding], dim=-1)
-            proprio_embedding = self.query_projector(query_input)
-
         proprio_embedding = proprio_embedding.unsqueeze(1)
         
         # MHA
@@ -163,11 +142,6 @@ class _TorchPolicyExporter(torch.nn.Module):
         mha_output = mha_output.squeeze(1)
 
         encoded_obs = torch.cat([mha_output, proprio_obs], dim=-1)
-
-        if self.attach_global:
-            encoded_obs = torch.cat([global_features_max, encoded_obs], dim=-1)
-
-        # Final encoded feature
         return encoded_obs
 
     def forward_lstm(self, x):
@@ -231,19 +205,10 @@ class _OnnxPolicyExporter(torch.nn.Module):
             self.map_cnn = copy.deepcopy(policy.map_cnn)
             self.mha = copy.deepcopy(policy.mha)
             self.actor_proprio_embedding = copy.deepcopy(policy.actor_proprio_embedding)
-            self.attach_global = getattr(policy, "attach_global", False)
-            if self.attach_global:
-                self.global_encoder = copy.deepcopy(policy.global_encoder)
-                self.query_projector = copy.deepcopy(policy.query_projector)
-            else:
-                self.global_encoder = torch.nn.Identity()
-                self.query_projector = torch.nn.Identity()
             
             self.map_cnn.cpu()
             self.mha.cpu()
             self.actor_proprio_embedding.cpu()
-            self.global_encoder.cpu()
-            self.query_projector.cpu()
         # --------------------------------------------------------
 
         # copy policy parameters
@@ -300,28 +265,17 @@ class _OnnxPolicyExporter(torch.nn.Module):
         # CNN Features
         map_scan = map_scan.permute(0, 3, 1, 2)
         cnn_features = self.map_cnn(map_scan)
-        # Flatten spatial dims into sequence dim (handles downsampling automatically)
+        # Flatten spatial dims into sequence dim
         cnn_features = cnn_features.permute(0, 2, 3, 1).flatten(1, 2)
         local_features = cnn_features
 
         # Proprio Embedding & MHA
         proprio_embedding = self.actor_proprio_embedding(proprio_obs)
-        # Initialize for TorchScript's static definite-assignment analysis.
-        global_features_max = torch.zeros_like(local_features[:, 0, :])
-        if self.attach_global:
-            global_features = self.global_encoder(local_features)
-            global_features_max, _ = torch.max(global_features, dim=1)
-            query_input = torch.cat([global_features_max, proprio_embedding], dim=-1)
-            proprio_embedding = self.query_projector(query_input)
         proprio_embedding = proprio_embedding.unsqueeze(1)
         mha_output, _ = self.mha(query=proprio_embedding, key=local_features, value=local_features)
         mha_output = mha_output.squeeze(1)
 
         encoded_obs = torch.cat([mha_output, proprio_obs], dim=-1)
-
-        if self.attach_global:
-            encoded_obs = torch.cat([global_features_max, encoded_obs], dim=-1)
-
         return encoded_obs
 
     def forward(self, x):

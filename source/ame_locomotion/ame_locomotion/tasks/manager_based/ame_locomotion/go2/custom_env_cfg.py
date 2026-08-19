@@ -29,8 +29,8 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 from ame_locomotion.tasks.manager_based.ame_locomotion import mdp
-import ame_locomotion.tasks.manager_based.ame_locomotion.terrains as terrain_gen
 
+import isaaclab.terrains as terrain_gen
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
 
@@ -272,66 +272,82 @@ class UnitreeGo2CustomEnvCfg_PLAY(UnitreeGo2CustomEnvCfg):
         self.episode_length_s = 40.0
         self.scene.terrain.max_init_terrain_level = None
         self.scene.terrain.terrain_generator.curriculum = False
-        self.scene.terrain.terrain_generator.num_rows = 1
-        self.scene.terrain.terrain_generator.num_cols = 1
+        self.scene.terrain.terrain_generator.num_rows = 4
+        self.scene.terrain.terrain_generator.num_cols = 4
         self.scene.terrain.terrain_generator.size = (8.0, 8.0)
 
-        # Select exactly one terrain by uncommenting its entry and commenting out "boxes".
+        # Select one terrain by uncommenting its entry and commenting out others.
         self.scene.terrain.terrain_generator.sub_terrains = {
+            # === 1. 经典粗糙地形 (ROUGH_TERRAINS_CFG 标准预设) ===
+            # "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
+            #     proportion=1.0, noise_range=(0.02, 0.10), noise_step=0.02, border_width=0.25
+            # ),  # 随机起伏粗糙地面 (Continuous Rough Terrain)
             # "boxes": terrain_gen.MeshRandomGridTerrainCfg(
-            #     proportion=1.0, grid_width=0.45, grid_height_range=(0.1, 0.1), platform_width=2.0
-            # ),
+            #     proportion=1.0, grid_width=0.45, grid_height_range=(0.05, 0.2), platform_width=2.0
+            # ),  # 离散随机高低方块网格 (Discrete Boxes Grid)
             # "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
-            #     proportion=1.0, step_height_range=(0.15, 0.15), step_width=0.3,
-            #     platform_width=3.0, border_width=1.0, holes=False,
-            # ),
+            #     proportion=1.0, step_height_range=(0.05, 0.23), step_width=0.3, platform_width=3.0, border_width=1.0, holes=False
+            # ),  # 正金字塔台阶/楼梯 (Upward Pyramid Stairs)
             # "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
-            #     proportion=1.0, step_height_range=(0.15, 0.15), step_width=0.3,
-            #     platform_width=3.0, border_width=1.0, holes=False,
-            # ),
-            "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
-                proportion=1.0, noise_range=(0.02, 0.1), noise_step=0.01,
-                downsampled_scale=0.1, border_width=0.25,
-            ),
+            #     proportion=1.0, step_height_range=(0.05, 0.23), step_width=0.3, platform_width=3.0, border_width=1.0, holes=False
+            # ),  # 倒金字塔下台阶/楼梯 (Downward Inverted Stairs)
             # "hf_pyramid_slope": terrain_gen.HfPyramidSlopedTerrainCfg(
-            #     proportion=1.0, slope_range=(0.2, 0.2), platform_width=2.0, border_width=0.25,
-            # ),
+            #     proportion=1.0, slope_range=(0.0, 0.4), platform_width=2.0, border_width=0.25
+            # ),  # 正金字塔连续斜坡 (Pyramid Slopes)
             # "hf_pyramid_slope_inv": terrain_gen.HfInvertedPyramidSlopedTerrainCfg(
-            #     proportion=1.0, slope_range=(0.2, 0.2), platform_width=2.0, border_width=0.25,
-            # ),
+            #     proportion=1.0, slope_range=(0.0, 0.4), platform_width=2.0, border_width=0.25
+            # ),  # 倒金字塔下斜坡/碗状坡地 (Inverted Pyramid Slopes)
+
+            # === 2. 官方三角网格地形 (Official Trimesh Terrains) ===
+            # "mesh_plane": terrain_gen.MeshPlaneTerrainCfg(
+            #     proportion=1.0
+            # ),  # 纯平坦地面 (Flat Plane)
+            # "mesh_gap": terrain_gen.MeshGapTerrainCfg(
+            #     proportion=1.0, gap_width_range=(0.3, 0.6), platform_width=2.0
+            # ),  # 环绕深沟/裂缝跨越地形 (Gap / Trench)
+            # "mesh_pit": terrain_gen.MeshPitTerrainCfg(
+            #     proportion=1.0, pit_depth_range=(0.1, 0.3), platform_width=2.0, double_pit=False
+            # ),  # 凹坑下潜与出坑地形 (Pit / Depression)
+            # "mesh_box": terrain_gen.MeshBoxTerrainCfg(
+            #     proportion=1.0, box_height_range=(0.1, 0.3), platform_width=2.0, double_box=False
+            # ),  # 箱体高台地形 (Box Platform)
+            # "mesh_rails": terrain_gen.MeshRailsTerrainCfg(
+            #     proportion=1.0, rail_thickness_range=(0.1, 0.3), rail_height_range=(0.05, 0.2), platform_width=2.0
+            # ),  # 水平导轨/障碍条 (Horizontal Rails)
+            # "mesh_floating_ring": terrain_gen.MeshFloatingRingTerrainCfg(
+            #     proportion=1.0, ring_width_range=(0.3, 0.5), ring_height_range=(0.1, 0.2), ring_thickness=0.1, platform_width=2.0
+            # ),  # 悬浮环形几何障碍 (Floating Ring)
+            # "mesh_star": terrain_gen.MeshStarTerrainCfg(
+            #     proportion=1.0, num_bars=5, bar_width_range=(0.2, 0.4), bar_height_range=(0.05, 0.2), platform_width=2.0
+            # ),  # 星形放射状障碍地形 (Star Pattern)
+            # "mesh_repeated_pyramids": terrain_gen.MeshRepeatedPyramidsTerrainCfg(
+            #     proportion=1.0, platform_width=2.0,
+            #     object_params_start=terrain_gen.MeshRepeatedPyramidsTerrainCfg.ObjectCfg(num_objects=30, height=0.1, radius=0.2),
+            #     object_params_end=terrain_gen.MeshRepeatedPyramidsTerrainCfg.ObjectCfg(num_objects=50, height=0.2, radius=0.3),
+            # ),  # 密集圆锥/尖锥立桩群 (Repeated Pyramids)
+            # "mesh_repeated_boxes": terrain_gen.MeshRepeatedBoxesTerrainCfg(
+            #     proportion=1.0, platform_width=2.0,
+            #     object_params_start=terrain_gen.MeshRepeatedBoxesTerrainCfg.ObjectCfg(num_objects=30, height=0.1, size=(0.3, 0.3)),
+            #     object_params_end=terrain_gen.MeshRepeatedBoxesTerrainCfg.ObjectCfg(num_objects=50, height=0.2, size=(0.4, 0.4)),
+            # ),  # 密集斜放方块群 (Repeated Boxes)
+            # "mesh_repeated_cylinders": terrain_gen.MeshRepeatedCylindersTerrainCfg(
+            #     proportion=1.0, platform_width=2.0,
+            #     object_params_start=terrain_gen.MeshRepeatedCylindersTerrainCfg.ObjectCfg(num_objects=30, height=0.1, radius=0.2),
+            #     object_params_end=terrain_gen.MeshRepeatedCylindersTerrainCfg.ObjectCfg(num_objects=50, height=0.2, radius=0.3),
+            # ),  # 密集圆柱立桩群 (Repeated Cylinders)
+
+            # === 3. 官方高度图地形 (Official HeightField Terrains) ===
             # "hf_steppingstones": terrain_gen.HfSteppingStonesTerrainCfg(
             #     proportion=1.0, stone_height_max=0.05, stone_width_range=(0.25, 0.5),
-            #     stone_distance_range=(0.05, 0.25), platform_width=2.0, holes_depth=-2.0, border_width=0.25,
-            # ),
-            # "hf_gaps": terrain_gen.HfConcentricGapTerrainCfg(
-            #     proportion=1.0, gap_width_range=(0.2, 0.3), ground_width_range=(0.5, 0.5),
-            #     ground_height_max=0.03, gap_depth=-2.0, platform_width=2.0, border_width=0.25,
-            # ),
-            # "stakes1": terrain_gen.HfDoubleColumnStakesTerrainCfg(
-            #     proportion=1.0, stake_height_max=0.03, stake_side_range=(0.2, 0.4),
-            #     stake_gap_range=(0.1, 0.3), column_gap_range=(0.1, 0.1), column_jitter=0.0,
-            #     holes_depth=-2.0, platform_width=2.0, border_width=0.25,
-            # ),
-            # "stakes2": terrain_gen.HfAlternateColumnStakesTerrainCfg(
-            #     proportion=1.0, stake_height_max=0.03, stake_side_range=(0.2, 0.4),
-            #     stake_gap_range=(0.05, 0.15), column_gap_range=(0.0, 0.2), column_jitter=0.0,
-            #     holes_depth=-2.0, platform_width=2.0, border_width=0.25,
-            # ),
-            # "stakes3": terrain_gen.HfAlternateColumnStakesTerrainCfg(
-            #     proportion=1.0, stake_height_max=0.03, stake_side_range=(0.2, 0.4),
-            #     stake_gap_range=(0.05, 0.25), column_gap_range=(0.3, 0.2), column_jitter=0.0,
-            #     holes_depth=-2.0, platform_width=2.0, border_width=0.25,
-            # ),
-            # "stonebridge": terrain_gen.HfStonesBridgeTerrainCfg(
-            #     proportion=1.0, stone_height_max=0.03, stone_width_range=(0.25, 0.35),
-            #     stone_length_range=(0.6, 1.0), stone_distance_range=(0.3, 0.5),
-            #     stone_lateral_distance_range=(0.0, 0.0), holes_depth=-2.0,
-            #     platform_width=2.0, border_width=0.25,
-            # ),
-            # "rails": terrain_gen.MeshRailsTerrainCfg(
-            #     proportion=1.0, rail_height_range=(0.05, 0.25), rail_thickness_range=(0.1, 0.3),
-            #     platform_width=2.0,
-            # ),
+            #     stone_distance_range=(0.05, 0.25), platform_width=2.0, holes_depth=-2.0, border_width=0.25
+            # ),  # 梅花桩/跳岩石块地形 (Stepping Stones)
+            # "hf_wave": terrain_gen.HfWaveTerrainCfg(
+            #     proportion=1.0, amplitude_range=(0.1, 0.3), num_waves=4, border_width=0.25
+            # ),  # 正弦连续波浪起伏地面 (Wave Terrain)
+            # "hf_discrete_obstacles": terrain_gen.HfDiscreteObstaclesTerrainCfg(
+            #     proportion=1.0, obstacle_width_range=(0.3, 0.6), obstacle_height_range=(0.05, 0.15),
+            #     num_obstacles=40, platform_width=2.0, border_width=0.25
+            # ),  # 离散凸起方块障碍 (Discrete Obstacles)
         }
         self.observations.policy.enable_corruption = False
         self.observations.policy.height_scan.params["noise"] = False

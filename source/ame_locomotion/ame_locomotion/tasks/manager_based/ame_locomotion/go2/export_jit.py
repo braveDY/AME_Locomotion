@@ -52,8 +52,6 @@ policy = ActorCriticEncoder(
     map_scan_dim=(33, 21, 3),
     mha_dim=64,
     num_heads=16,
-    cnn_downsample=True,
-    attach_global=False,
 )
 policy.load_state_dict(ckpt['model_state_dict'], strict=False)
 policy.eval()

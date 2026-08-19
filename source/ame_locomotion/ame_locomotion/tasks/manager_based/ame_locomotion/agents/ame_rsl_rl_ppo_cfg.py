@@ -16,8 +16,6 @@ class G1AMEPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     policy = RslRlPpoActorCriticCfg(
         class_name="ActorCriticEncoder",
         init_noise_std=1.0,
-        actor_obs_normalization=False,
-        critic_obs_normalization=False,
         actor_hidden_dims=[512, 256, 128],
         critic_hidden_dims=[512, 256, 128],
         activation="elu",
