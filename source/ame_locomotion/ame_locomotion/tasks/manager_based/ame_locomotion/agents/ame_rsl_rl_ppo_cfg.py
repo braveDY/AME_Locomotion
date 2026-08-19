@@ -8,11 +8,11 @@ from isaaclab.utils import configclass
 from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, RslRlPpoAlgorithmCfg
 
 @configclass
-class G1AMEPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+class Go2AMEPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 10000
     save_interval = 100
-    experiment_name = "g1_ame"
+    experiment_name = "go2_ame"
     policy = RslRlPpoActorCriticCfg(
         class_name="ActorCriticEncoder",
         init_noise_std=1.0,
@@ -34,8 +34,3 @@ class G1AMEPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         desired_kl=0.01,
         max_grad_norm=1.0,
     )
-
-
-@configclass
-class Go2AMEPPORunnerCfg(G1AMEPPORunnerCfg):
-    experiment_name = "go2_ame"
