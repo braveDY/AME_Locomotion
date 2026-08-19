@@ -45,9 +45,6 @@ class PPO:
             self.gpu_global_rank = 0
             self.gpu_world_size = 1
 
-        self.rnd = None
-        self.symmetry = None
-
         # PPO components
         self.policy = policy
         self.policy.to(self.device)
@@ -99,20 +96,11 @@ class PPO:
     def process_env_step(self, obs, rewards, dones, extras):
         # update the normalizers
         self.policy.update_normalization(obs)
-        if self.rnd:
-            self.rnd.update_normalization(obs)
 
         # Record the rewards and dones
         # Note: we clone here because later on we bootstrap the rewards based on timeouts
         self.transition.rewards = rewards.clone()
         self.transition.dones = dones
-
-        # Compute the intrinsic rewards and add to extrinsic rewards
-        if self.rnd:
-            # Compute the intrinsic rewards
-            self.intrinsic_rewards = self.rnd.get_intrinsic_reward(obs)
-            # Add intrinsic rewards to extrinsic rewards
-            self.transition.rewards += self.intrinsic_rewards
 
         # Bootstrapping on time outs
         if "time_outs" in extras:
@@ -136,16 +124,6 @@ class PPO:
         mean_value_loss = 0
         mean_surrogate_loss = 0
         mean_entropy = 0
-        # -- RND loss
-        if self.rnd:
-            mean_rnd_loss = 0
-        else:
-            mean_rnd_loss = None
-        # -- Symmetry loss
-        if self.symmetry:
-            mean_symmetry_loss = 0
-        else:
-            mean_symmetry_loss = None
 
         # generator for mini batches
         if self.policy.is_recurrent:
@@ -167,53 +145,21 @@ class PPO:
             masks_batch,
         ) in generator:
 
-            # number of augmentations per sample
-            # we start with 1 and increase it if we use symmetry augmentation
-            num_aug = 1
-            # original batch size
-            # we assume policy group is always there and needs augmentation
-            original_batch_size = obs_batch.batch_size[0]
-
             # check if we should normalize advantages per mini batch
             if self.normalize_advantage_per_mini_batch:
                 with torch.no_grad():
                     advantages_batch = (advantages_batch - advantages_batch.mean()) / (advantages_batch.std() + 1e-8)
 
-            # Perform symmetric augmentation
-            if self.symmetry and self.symmetry["use_data_augmentation"]:
-                # augmentation using symmetry
-                data_augmentation_func = self.symmetry["data_augmentation_func"]
-                # returned shape: [batch_size * num_aug, ...]
-                obs_batch, actions_batch = data_augmentation_func(
-                    obs=obs_batch,
-                    actions=actions_batch,
-                    env=self.symmetry["_env"],
-                )
-                # compute number of augmentations per sample
-                # we assume policy group is always there and needs augmentation
-                num_aug = int(obs_batch.batch_size[0] / original_batch_size)
-                # repeat the rest of the batch
-                # -- actor
-                old_actions_log_prob_batch = old_actions_log_prob_batch.repeat(num_aug, 1)
-                # -- critic
-                target_values_batch = target_values_batch.repeat(num_aug, 1)
-                advantages_batch = advantages_batch.repeat(num_aug, 1)
-                returns_batch = returns_batch.repeat(num_aug, 1)
-
             # Recompute actions log prob and entropy for current batch of transitions
-            # Note: we need to do this because we updated the policy with the new parameters
-            # -- actor
             self.policy.act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
             actions_log_prob_batch = self.policy.get_actions_log_prob(actions_batch)
-            # -- critic
             value_batch = self.policy.evaluate(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[1])
-            # -- entropy
-            # we only keep the entropy of the first augmentation (the original one)
-            mu_batch = self.policy.action_mean[:original_batch_size]
-            sigma_batch = self.policy.action_std[:original_batch_size]
-            entropy_batch = self.policy.entropy[:original_batch_size]
 
-            # KL
+            mu_batch = self.policy.action_mean
+            sigma_batch = self.policy.action_std
+            entropy_batch = self.policy.entropy
+
+            # KL divergence calculation
             if self.desired_kl is not None and self.schedule == "adaptive":
                 with torch.inference_mode():
                     kl = torch.sum(
@@ -230,23 +176,20 @@ class PPO:
                         torch.distributed.all_reduce(kl_mean, op=torch.distributed.ReduceOp.SUM)
                         kl_mean /= self.gpu_world_size
 
-                    # Update the learning rate
-                    # Perform this adaptation only on the main process
-                    # TODO: Is this needed? If KL-divergence is the "same" across all GPUs,
-                    #       then the learning rate should be the same across all GPUs.
+                    # Update the learning rate (only on main process)
                     if self.gpu_global_rank == 0:
                         if kl_mean > self.desired_kl * 2.0:
                             self.learning_rate = max(1e-5, self.learning_rate / 1.5)
                         elif kl_mean < self.desired_kl / 2.0 and kl_mean > 0.0:
                             self.learning_rate = min(1e-2, self.learning_rate * 1.5)
 
-                    # Update the learning rate for all GPUs
+                    # Broadcast learning rate to all GPUs
                     if self.is_multi_gpu:
                         lr_tensor = torch.tensor(self.learning_rate, device=self.device)
                         torch.distributed.broadcast(lr_tensor, src=0)
                         self.learning_rate = lr_tensor.item()
 
-                    # Update the learning rate for all parameter groups
+                    # Update learning rate in optimizer
                     for param_group in self.optimizer.param_groups:
                         param_group["lr"] = self.learning_rate
 
@@ -271,119 +214,34 @@ class PPO:
 
             loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
 
-            # Symmetry loss
-            if self.symmetry:
-                # obtain the symmetric actions
-                # if we did augmentation before then we don't need to augment again
-                if not self.symmetry["use_data_augmentation"]:
-                    data_augmentation_func = self.symmetry["data_augmentation_func"]
-                    obs_batch, _ = data_augmentation_func(obs=obs_batch, actions=None, env=self.symmetry["_env"])
-                    # compute number of augmentations per sample
-                    num_aug = int(obs_batch.shape[0] / original_batch_size)
-
-                # actions predicted by the actor for symmetrically-augmented observations
-                mean_actions_batch_result = self.policy.act_inference(obs_batch.detach().clone())
-                
-                # For attention visualization, act_inference may return
-                # a tuple (actions, attention_weights). Handle both cases.
-                if isinstance(mean_actions_batch_result, tuple):
-                    mean_actions_batch = mean_actions_batch_result[0]  # Extract actions tensor
-                else:
-                    mean_actions_batch = mean_actions_batch_result
-
-                # compute the symmetrically augmented actions
-                # note: we are assuming the first augmentation is the original one.
-                #   We do not use the action_batch from earlier since that action was sampled from the distribution.
-                #   However, the symmetry loss is computed using the mean of the distribution.
-                action_mean_orig = mean_actions_batch[:original_batch_size]
-                _, actions_mean_symm_batch = data_augmentation_func(
-                    obs=None, actions=action_mean_orig, env=self.symmetry["_env"]
-                )
-
-                # compute the loss (we skip the first augmentation as it is the original one)
-                mse_loss = torch.nn.MSELoss()
-                symmetry_loss = mse_loss(
-                    mean_actions_batch[original_batch_size:], actions_mean_symm_batch.detach()[original_batch_size:]
-                )
-                # add the loss to the total loss
-                if self.symmetry["use_mirror_loss"]:
-                    loss += self.symmetry["mirror_loss_coeff"] * symmetry_loss
-                else:
-                    symmetry_loss = symmetry_loss.detach()
-
-            # Random Network Distillation loss
-            # TODO: Move this processing to inside RND module.
-            if self.rnd:
-                # extract the rnd_state
-                # TODO: Check if we still need torch no grad. It is just an affine transformation.
-                with torch.no_grad():
-                    rnd_state_batch = self.rnd.get_rnd_state(obs_batch[:original_batch_size])
-                    rnd_state_batch = self.rnd.state_normalizer(rnd_state_batch)
-                # predict the embedding and the target
-                predicted_embedding = self.rnd.predictor(rnd_state_batch)
-                target_embedding = self.rnd.target(rnd_state_batch).detach()
-                # compute the loss as the mean squared error
-                mseloss = torch.nn.MSELoss()
-                rnd_loss = mseloss(predicted_embedding, target_embedding)
-
-            # Compute the gradients
-            # -- For PPO
+            # Compute gradients & update
             self.optimizer.zero_grad()
             loss.backward()
-            # -- For RND
-            if self.rnd:
-                self.rnd_optimizer.zero_grad()  # type: ignore
-                rnd_loss.backward()
 
-            # Collect gradients from all GPUs
+            # Collect gradients across GPUs if multi-gpu
             if self.is_multi_gpu:
                 self.reduce_parameters()
 
-            # Apply the gradients
-            # -- For PPO
+            # Apply gradients
             nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
             self.optimizer.step()
-            # -- For RND
-            if self.rnd_optimizer:
-                self.rnd_optimizer.step()
 
-            # Store the losses
+            # Store losses
             mean_value_loss += value_loss.item()
             mean_surrogate_loss += surrogate_loss.item()
             mean_entropy += entropy_batch.mean().item()
-            # -- RND loss
-            if mean_rnd_loss is not None:
-                mean_rnd_loss += rnd_loss.item()
-            # -- Symmetry loss
-            if mean_symmetry_loss is not None:
-                mean_symmetry_loss += symmetry_loss.item()
 
-        # -- For PPO
         num_updates = self.num_learning_epochs * self.num_mini_batches
         mean_value_loss /= num_updates
         mean_surrogate_loss /= num_updates
         mean_entropy /= num_updates
-        # -- For RND
-        if mean_rnd_loss is not None:
-            mean_rnd_loss /= num_updates
-        # -- For Symmetry
-        if mean_symmetry_loss is not None:
-            mean_symmetry_loss /= num_updates
-        # -- Clear the storage
         self.storage.clear()
 
-        # construct the loss dictionary
-        loss_dict = {
+        return {
             "value_function": mean_value_loss,
             "surrogate": mean_surrogate_loss,
             "entropy": mean_entropy,
         }
-        if self.rnd:
-            loss_dict["rnd"] = mean_rnd_loss
-        if self.symmetry:
-            loss_dict["symmetry"] = mean_symmetry_loss
-
-        return loss_dict
 
     """
     Helper functions
@@ -391,43 +249,22 @@ class PPO:
 
     def broadcast_parameters(self):
         """Broadcast model parameters to all GPUs."""
-        # obtain the model parameters on current GPU
         model_params = [self.policy.state_dict()]
-        if self.rnd:
-            model_params.append(self.rnd.predictor.state_dict())
-        # broadcast the model parameters
         torch.distributed.broadcast_object_list(model_params, src=0)
-        # load the model parameters on all GPUs from source GPU
         self.policy.load_state_dict(model_params[0])
-        if self.rnd:
-            self.rnd.predictor.load_state_dict(model_params[1])
 
     def reduce_parameters(self):
-        """Collect gradients from all GPUs and average them.
-
-        This function is called after the backward pass to synchronize the gradients across all GPUs.
-        """
-        # Create a tensor to store the gradients
+        """Collect gradients from all GPUs and average them."""
         grads = [param.grad.view(-1) for param in self.policy.parameters() if param.grad is not None]
-        if self.rnd:
-            grads += [param.grad.view(-1) for param in self.rnd.parameters() if param.grad is not None]
         all_grads = torch.cat(grads)
 
-        # Average the gradients across all GPUs
         torch.distributed.all_reduce(all_grads, op=torch.distributed.ReduceOp.SUM)
         all_grads /= self.gpu_world_size
 
-        # Get all parameters
         all_params = self.policy.parameters()
-        if self.rnd:
-            all_params = chain(all_params, self.rnd.parameters())
-
-        # Update the gradients for all parameters with the reduced gradients
         offset = 0
         for param in all_params:
             if param.grad is not None:
                 numel = param.numel()
-                # copy data back from shared buffer
                 param.grad.data.copy_(all_grads[offset : offset + numel].view_as(param.grad.data))
-                # update the offset for the next parameter
                 offset += numel
