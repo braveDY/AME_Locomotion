@@ -1,60 +1,35 @@
-# AME Locomotion
+# AME Locomotion (Unitree Go2)
 
-基于 Isaac Lab 与 RSL-RL 的 Attention-Based Map Encoding（AME）腿式运动复现项目，包含 Unitree G1 29DoF 与 Go2 任务。
+基于 Isaac Lab 与 RSL-RL 的 Attention-Based Map Encoding（AME）四足机器人运动控制项目，专注 Unitree Go2 崎岖地形行走训练。
 
-## 环境
-
-- Isaac Sim / Isaac Lab
-- Python 包：`ame_locomotion`、本仓库的 `rsl_rl`
-- AME 编码器：[rsl_rl/rsl_rl/modules/actor_critic_encoder.py](rsl_rl/rsl_rl/modules/actor_critic_encoder.py)
-
-安装扩展：
+## 安装
 
 ```bash
 python -m pip install -e source/ame_locomotion
 python -m pip install -e rsl_rl
 ```
 
-## 训练与评估
+## 快速开始
 
-### G1 29DoF
+### 1. 训练 Go2 AME
 
 ```bash
 bash run_train.sh
-python scripts/rsl_rl/play.py \
-  --task AME-G1-29DOF-Play-v0 \
-  --checkpoint pretrained/ame1.pt \
-  --vis_attention
+# 或指定参数
+python scripts/rsl_rl/train.py --task AME-Go2-Custom-v0 --headless --num_envs 2048 --max_iterations 10000
 ```
 
-G1 使用两阶段训练。第一阶段结束后，将
-[velocity_env_cfg_29dof.py](source/ame_locomotion/ame_locomotion/tasks/manager_based/ame_locomotion/29dof/velocity_env_cfg_29dof.py)
-中的 `FINETUNE` 改为 `True`，再从第一阶段 checkpoint 继续训练。
-
-### Go2
+### 2. 回放与注意力可视化
 
 ```bash
-python scripts/rsl_rl/train.py --task AME-Go2-v0 --headless
-python scripts/rsl_rl/train.py \
-  --task AME-Go2-Custom-v0 \
-  --headless \
-  --num_envs 2048 \
-  --max_iterations 4000
-
-
-python scripts/rsl_rl/play.py \
-  --task AME-Go2-Play-v0 \
-  --checkpoint <checkpoint路径> \
-  --vis_attention
+bash run_play.sh --checkpoint logs/rsl_rl/go2_ame/<run_dir>/model_<step>.pt
 ```
 
-rsync -avzP --ignore-existing isaaclab:/root/IsaacLab/logs .
-rsync -avzP --ignore-existing isaaclab:/root/AME_Locomotion/logs .
+### 3. 注意力热图绘制
 
-python scripts/rsl_rl/play.py \
-  --task AME-Go2-Custom-Play-v0 \
-  --checkpoint logs/rsl_rl/go2_ame/2026-08-12_23-52-36/model_3999.pt \
-  --vis_attention
+```bash
+python scripts/plot_attention.py
+```
 
 
 

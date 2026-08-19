@@ -7,8 +7,25 @@
 Python module serving as a project/extension template.
 """
 
-# Register Gym environments.
-from .tasks import *
+import gymnasium as gym
 
-# Register UI extensions.
-from .ui_extension_example import *
+gym.register(
+    id="AME-Go2-Custom-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.env_cfg:UnitreeGo2CustomEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{__name__}.ppo_cfg:Go2AMEPPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="AME-Go2-Custom-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.env_cfg:UnitreeGo2CustomEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": f"{__name__}.ppo_cfg:Go2AMEPPORunnerCfg",
+    },
+)
+

@@ -5,8 +5,7 @@
 
 """Configuration for custom terrains."""
 
-# import isaaclab.terrains as terrain_gen
-import ame_locomotion.tasks.manager_based.ame_locomotion.terrains as terrain_gen
+import ame_locomotion.terrains as terrain_gen
 from isaaclab.terrains.terrain_generator_cfg import TerrainGeneratorCfg
 
 from .loco_hf_terrains_cfg import *

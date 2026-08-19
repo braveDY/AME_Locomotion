@@ -28,7 +28,7 @@ from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
-from ame_locomotion.tasks.manager_based.ame_locomotion import mdp
+from ame_locomotion import mdp
 
 import isaaclab.terrains as terrain_gen
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
