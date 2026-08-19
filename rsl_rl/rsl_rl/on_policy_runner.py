@@ -75,13 +75,6 @@ class OnPolicyRunner:
         cur_reward_sum = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
         cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
 
-        # create buffers for logging extrinsic and intrinsic rewards
-        if self.alg.rnd:
-            erewbuffer = deque(maxlen=100)
-            irewbuffer = deque(maxlen=100)
-            cur_ereward_sum = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
-            cur_ireward_sum = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
-
         # Ensure all parameters are in-synced
         if self.is_distributed:
             print(f"Synchronizing parameters for rank {self.gpu_global_rank}...")
@@ -103,36 +96,20 @@ class OnPolicyRunner:
                     obs, rewards, dones = (obs.to(self.device), rewards.to(self.device), dones.to(self.device))
                     # process the step
                     self.alg.process_env_step(obs, rewards, dones, extras)
-                    # Extract intrinsic rewards (only for logging)
-                    intrinsic_rewards = self.alg.intrinsic_rewards if self.alg.rnd else None
                     # book keeping
                     if self.log_dir is not None:
                         if "episode" in extras:
                             ep_infos.append(extras["episode"])
                         elif "log" in extras:
                             ep_infos.append(extras["log"])
-                        # Update rewards
-                        if self.alg.rnd:
-                            cur_ereward_sum += rewards
-                            cur_ireward_sum += intrinsic_rewards  # type: ignore
-                            cur_reward_sum += rewards + intrinsic_rewards
-                        else:
-                            cur_reward_sum += rewards
-                        # Update episode length
+                        cur_reward_sum += rewards
                         cur_episode_length += 1
                         # Clear data for completed episodes
-                        # -- common
                         new_ids = (dones > 0).nonzero(as_tuple=False)
                         rewbuffer.extend(cur_reward_sum[new_ids][:, 0].cpu().numpy().tolist())
                         lenbuffer.extend(cur_episode_length[new_ids][:, 0].cpu().numpy().tolist())
                         cur_reward_sum[new_ids] = 0
                         cur_episode_length[new_ids] = 0
-                        # -- intrinsic and extrinsic rewards
-                        if self.alg.rnd:
-                            erewbuffer.extend(cur_ereward_sum[new_ids][:, 0].cpu().numpy().tolist())
-                            irewbuffer.extend(cur_ireward_sum[new_ids][:, 0].cpu().numpy().tolist())
-                            cur_ereward_sum[new_ids] = 0
-                            cur_ireward_sum[new_ids] = 0
 
                 stop = time.time()
                 collection_time = stop - start
@@ -239,12 +216,6 @@ class OnPolicyRunner:
             # -- Losses
             for key, value in locs["loss_dict"].items():
                 log_string += f"""{f'Mean {key} loss:':>{pad}} {value:.4f}\n"""
-            # -- Rewards
-            if hasattr(self.alg, "rnd") and self.alg.rnd:
-                log_string += (
-                    f"""{'Mean extrinsic reward:':>{pad}} {statistics.mean(locs['erewbuffer']):.2f}\n"""
-                    f"""{'Mean intrinsic reward:':>{pad}} {statistics.mean(locs['irewbuffer']):.2f}\n"""
-                )
             log_string += f"""{'Mean reward:':>{pad}} {statistics.mean(locs['rewbuffer']):.2f}\n"""
             # -- episode info
             log_string += f"""{'Mean episode length:':>{pad}} {statistics.mean(locs['lenbuffer']):.2f}\n"""
@@ -304,18 +275,10 @@ class OnPolicyRunner:
         return self.alg.policy.act_inference
 
     def train_mode(self):
-        # -- PPO
         self.alg.policy.train()
-        # -- RND
-        if hasattr(self.alg, "rnd") and self.alg.rnd:
-            self.alg.rnd.train()
 
     def eval_mode(self):
-        # -- PPO
         self.alg.policy.eval()
-        # -- RND
-        if hasattr(self.alg, "rnd") and self.alg.rnd:
-            self.alg.rnd.eval()
 
     def add_git_repo_to_log(self, repo_file_path):
         self.git_status_repos.append(repo_file_path)
