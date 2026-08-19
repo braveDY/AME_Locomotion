@@ -1,6 +1,11 @@
-import numpy as np
-import matplotlib.pyplot as plt
 import os
+import sys
+
+_PROJ_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(_PROJ_DIR, "rsl_rl"))
+
+import matplotlib.pyplot as plt
+import numpy as np
 from rsl_rl import PROJ_ROOT_DIR
 
 # Load attention weights

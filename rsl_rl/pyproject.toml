@@ -17,33 +17,19 @@ authors = [
   { name="David Hoeller", email="holler.david78@gmail.com" },
 ]
 description = "Fast and simple RL algorithms implemented in PyTorch"
-readme = { file = "README.md", content-type = "text/markdown"}
 license = { text = "BSD-3-Clause" }
 
 requires-python = ">=3.8"
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "Operating System :: OS Independent",
-]
 dependencies = [
-    "torch>=2.6.0",
-    "torchvision>=0.5.0",
+    "torch>=2.0.0",
     "tensordict>=0.7.0",
     "numpy>=1.16.4",
-    "GitPython",
-    "onnx",
 ]
-
-[project.urls]
-Homepage = "https://github.com/leggedrobotics/rsl_rl"
-Issues = "https://github.com/leggedrobotics/rsl_rl/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["rsl_rl*"]
 
-[tool.setuptools.package-data]
-"rsl_rl" = ["config/*", "licenses/*"]
 
 [tool.isort]
 

@@ -21,7 +21,7 @@ parser.add_argument("--video", action="store_true", default=False, help="Record 
 parser.add_argument("--video_length", type=int, default=200, help="Length of the recorded video (in steps).")
 parser.add_argument("--video_interval", type=int, default=2000, help="Interval between video recordings (in steps).")
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
-parser.add_argument("--task", type=str, default='AME-G1-29DOF-v0', help="Name of the task.")
+parser.add_argument("--task", type=str, default="AME-Go2-Custom-v0", help="Name of the task.")
 parser.add_argument(
     "--agent", type=str, default="rsl_rl_cfg_entry_point", help="Name of the RL agent configuration entry point."
 )
@@ -82,8 +82,14 @@ if version.parse(installed_version) < version.parse(RSL_RL_VERSION):
 
 """Rest everything follows."""
 
-import gymnasium as gym
 import os
+import sys
+
+_PROJ_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, os.path.join(_PROJ_DIR, "rsl_rl"))
+sys.path.insert(0, os.path.join(_PROJ_DIR, "source/ame_locomotion"))
+
+import gymnasium as gym
 import torch
 from datetime import datetime
 

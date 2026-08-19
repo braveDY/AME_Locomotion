@@ -60,10 +60,7 @@ AME_Locomotion/
 在项目根目录下，以可编辑模式（editable mode）安装：
 
 ```bash
-# 安装环境扩展包
 python -m pip install -e source/ame_locomotion
-
-# 安装定制化 RSL-RL 库
 python -m pip install -e rsl_rl
 ```
 

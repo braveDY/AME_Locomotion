@@ -24,6 +24,12 @@ simulation_app = app_launcher.app
 
 """Rest everything follows."""
 
+import os
+import sys
+
+_PROJ_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(_PROJ_DIR, "source/ame_locomotion"))
+
 import gymnasium as gym
 from prettytable import PrettyTable
 

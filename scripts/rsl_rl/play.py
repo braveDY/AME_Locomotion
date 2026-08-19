@@ -9,8 +9,13 @@
 
 import argparse
 import importlib.metadata as metadata
-import sys
 import math
+import os
+import sys
+
+_PROJ_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, os.path.join(_PROJ_DIR, "rsl_rl"))
+sys.path.insert(0, os.path.join(_PROJ_DIR, "source/ame_locomotion"))
 
 from packaging import version
 
