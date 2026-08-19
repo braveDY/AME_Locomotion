@@ -114,6 +114,8 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 
 import ame_locomotion  # noqa: F401
 
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 torch.backends.cudnn.deterministic = False
