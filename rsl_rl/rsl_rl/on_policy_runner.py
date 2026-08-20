@@ -334,13 +334,15 @@ class OnPolicyRunner:
     def _construct_algorithm(self, obs) -> PPO:
         """Construct the actor-critic algorithm."""
         # initialize the actor-critic
-        actor_critic_class = eval(self.policy_cfg.pop("class_name"))
+        class_name = self.policy_cfg.pop("class_name", "ActorCriticEncoder") if self.policy_cfg else "ActorCriticEncoder"
+        actor_critic_class = eval(class_name)
         actor_critic: ActorCriticEncoder = actor_critic_class(
             obs, self.cfg["obs_groups"], self.env.num_actions, **self.policy_cfg
         ).to(self.device)
 
         # initialize the algorithm
-        alg_class = eval(self.alg_cfg.pop("class_name"))
+        alg_class_name = self.alg_cfg.pop("class_name", "PPO") if self.alg_cfg else "PPO"
+        alg_class = eval(alg_class_name)
         alg: PPO = alg_class(actor_critic, device=self.device, **self.alg_cfg, multi_gpu_cfg=self.multi_gpu_cfg)
 
         # initialize the storage

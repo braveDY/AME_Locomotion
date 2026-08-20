@@ -96,6 +96,15 @@ python scripts/rsl_rl/play.py \
   --save_attention_weights \
   --video \
   --video_length 300
+
+python scripts/rsl_rl/play.py \
+  --task AME-Go2-Custom-Play-v0 \
+  --checkpoint logs/rsl_rl/go2_ame/2026-08-19_18-04-25/model_500.pt \
+  --num_envs 1 \
+  --vis_attention \
+  --headless \
+  --video \
+  --video_length 300
 ```
 
 * `--vis_attention`：在仿真窗口中以不同深浅颜色的 3D Marker 实时绘制机器人足底当前聚焦的地形区域。
