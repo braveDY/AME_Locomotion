@@ -1,10 +1,52 @@
 from __future__ import annotations
 
+import math
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.distributions import Normal
 
 from .mlp import MLP
+
+
+class CrossAttention(nn.Module):
+    """Memory-efficient Cross-Attention module using PyTorch 2.x F.scaled_dot_product_attention."""
+
+    def __init__(self, embed_dim: int = 64, num_heads: int = 16):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.head_dim = embed_dim // num_heads
+        assert self.head_dim * num_heads == embed_dim, "embed_dim must be divisible by num_heads"
+
+        self.q_proj = nn.Linear(embed_dim, embed_dim)
+        self.k_proj = nn.Linear(embed_dim, embed_dim)
+        self.v_proj = nn.Linear(embed_dim, embed_dim)
+        self.out_proj = nn.Linear(embed_dim, embed_dim)
+
+    def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, need_weights: bool = False):
+        # query: [B, 1, 64]
+        # key, value: [B, S, 64] (S = L * W = 693)
+        B, L_q, _ = query.shape
+        _, S, _ = key.shape
+
+        q = self.q_proj(query).view(B, L_q, self.num_heads, self.head_dim).transpose(1, 2)  # [B, H, 1, D]
+        k = self.k_proj(key).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)      # [B, H, S, D]
+        v = self.v_proj(value).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)    # [B, H, S, D]
+
+        if not need_weights:
+            out = F.scaled_dot_product_attention(q, k, v)  # [B, H, 1, D]
+            attn_weights = None
+        else:
+            scale = 1.0 / math.sqrt(self.head_dim)
+            attn_scores = torch.matmul(q, k.transpose(-2, -1)) * scale  # [B, H, 1, S]
+            attn_weights = torch.softmax(attn_scores, dim=-1)           # [B, H, 1, S]
+            out = torch.matmul(attn_weights, v)                         # [B, H, 1, D]
+            attn_weights = attn_weights.mean(dim=1)                     # [B, 1, S]
+
+        out = out.transpose(1, 2).reshape(B, L_q, self.embed_dim)       # [B, 1, 64]
+        out = self.out_proj(out)
+        return out, attn_weights
 
 
 class ActorCriticEncoder(nn.Module):
@@ -73,7 +115,7 @@ class ActorCriticEncoder(nn.Module):
 
         print(f"Critic MLP: {self.critic}")
         print(f"Encoder CNN: {self.map_cnn}")
-        print(f"Encoder MHA: {self.mha}")
+        print(f"Encoder Cross-Attention: {self.mha}")
         print(f"Encoder Actor Proprio: {self.actor_proprio_embedding}")
         print(f"Encoder Critic Proprio: {self.critic_proprio_embedding}")
 
@@ -112,10 +154,10 @@ class ActorCriticEncoder(nn.Module):
         self.actor_proprio_embedding = nn.Linear(actor_proprio_dim, self.mha_dim)
         self.critic_proprio_embedding = nn.Linear(critic_proprio_dim, self.mha_dim)
 
-        self.mha = nn.MultiheadAttention(embed_dim=self.mha_dim, num_heads=self.num_heads, batch_first=True)
+        self.mha = CrossAttention(embed_dim=self.mha_dim, num_heads=self.num_heads)
         print(
             f"Terrain Encoder: CNN output dim={self.cnn_output_dim}, "
-            f"Coord dim={self.coord_embed_dim}, MHA dim={self.mha_dim}, heads={self.num_heads}"
+            f"Coord dim={self.coord_embed_dim}, Cross-Attention dim={self.mha_dim}, heads={self.num_heads}"
         )
 
     def _encode_terrain(self, obs, need_weights: bool = False):
