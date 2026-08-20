@@ -3,4 +3,8 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Main module for the rsl_rl package."""
+"""Submodule defining the environment definitions."""
+
+from .vec_env import VecEnv
+
+__all__ = ["VecEnv"]

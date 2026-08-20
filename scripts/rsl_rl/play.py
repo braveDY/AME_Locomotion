@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.join(_PROJ_DIR, "source/ame_locomotion"))
 from packaging import version
 
 from isaaclab.app import AppLauncher
-from rsl_rl import PROJ_ROOT_DIR
+from rsl_rl.utils import PROJ_ROOT_DIR
 
 # local imports
 import cli_args  # isort: skip
@@ -77,7 +77,7 @@ from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 import isaaclab.sim as sim_utils
 from typing import Optional
 
-from rsl_rl import OnPolicyRunner
+from rsl_rl.runners import DistillationRunner, OnPolicyRunner
 
 from isaaclab.envs import (
     DirectMARLEnv,

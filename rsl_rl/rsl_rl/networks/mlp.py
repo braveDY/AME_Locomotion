@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 from functools import reduce
 
-from .utils import resolve_nn_activation
+from rsl_rl.utils import resolve_nn_activation
 
 
 class MLP(nn.Sequential):

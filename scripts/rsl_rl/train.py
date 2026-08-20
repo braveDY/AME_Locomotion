@@ -94,7 +94,7 @@ import torch
 from datetime import datetime
 
 import omni
-from rsl_rl import OnPolicyRunner
+from rsl_rl.runners import DistillationRunner, OnPolicyRunner
 
 from isaaclab.envs import (
     DirectMARLEnv,
