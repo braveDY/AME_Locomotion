@@ -1,52 +1,10 @@
 from __future__ import annotations
 
-import math
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.distributions import Normal
 
 from .mlp import MLP
-
-
-class CrossAttention(nn.Module):
-    """Memory-efficient Cross-Attention module using PyTorch 2.x F.scaled_dot_product_attention."""
-
-    def __init__(self, embed_dim: int = 64, num_heads: int = 16):
-        super().__init__()
-        self.embed_dim = embed_dim
-        self.num_heads = num_heads
-        self.head_dim = embed_dim // num_heads
-        assert self.head_dim * num_heads == embed_dim, "embed_dim must be divisible by num_heads"
-
-        self.q_proj = nn.Linear(embed_dim, embed_dim)
-        self.k_proj = nn.Linear(embed_dim, embed_dim)
-        self.v_proj = nn.Linear(embed_dim, embed_dim)
-        self.out_proj = nn.Linear(embed_dim, embed_dim)
-
-    def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, need_weights: bool = False):
-        # query: [B, 1, 64]
-        # key, value: [B, S, 64] (S = L * W = 693)
-        B, L_q, _ = query.shape
-        _, S, _ = key.shape
-
-        q = self.q_proj(query).view(B, L_q, self.num_heads, self.head_dim).transpose(1, 2)  # [B, H, 1, D]
-        k = self.k_proj(key).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)      # [B, H, S, D]
-        v = self.v_proj(value).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)    # [B, H, S, D]
-
-        if not need_weights:
-            out = F.scaled_dot_product_attention(q, k, v)  # [B, H, 1, D]
-            attn_weights = None
-        else:
-            scale = 1.0 / math.sqrt(self.head_dim)
-            attn_scores = torch.matmul(q, k.transpose(-2, -1)) * scale  # [B, H, 1, S]
-            attn_weights = torch.softmax(attn_scores, dim=-1)           # [B, H, 1, S]
-            out = torch.matmul(attn_weights, v)                         # [B, H, 1, D]
-            attn_weights = attn_weights.mean(dim=1)                     # [B, 1, S]
-
-        out = out.transpose(1, 2).reshape(B, L_q, self.embed_dim)       # [B, 1, 64]
-        out = self.out_proj(out)
-        return out, attn_weights
 
 
 class ActorCriticEncoder(nn.Module):
@@ -66,6 +24,8 @@ class ActorCriticEncoder(nn.Module):
         map_scan_dim=(33, 21, 3),  # L=33, W=21, 3D coordinates
         mha_dim=64,  # MHA feature dimension
         num_heads=16,  # Number of attention heads
+        cnn_downsample=True,
+        attach_global=False,
         **kwargs,
     ):
         if kwargs:
@@ -79,9 +39,9 @@ class ActorCriticEncoder(nn.Module):
         self.mha_dim = mha_dim
         self.num_heads = num_heads
         self.L, self.W, self.coord_dim = map_scan_dim
-
-        self.coord_embed_dim = 2
-        self.cnn_output_dim = self.mha_dim - self.coord_embed_dim
+        self.cnn_downsample = cnn_downsample
+        self.attach_global = attach_global
+        self.cnn_output_dim = self.mha_dim
 
         self.obs_groups = obs_groups
         num_actor_obs = 0
@@ -105,17 +65,20 @@ class ActorCriticEncoder(nn.Module):
         self.actor_proprio_dim = actor_proprio_dim
         self.critic_proprio_dim = critic_proprio_dim
 
-        self._build_terrain_encoder(self.actor_proprio_dim, self.critic_proprio_dim)
+        self._build_terrain_encoder(self.actor_proprio_dim, self.critic_proprio_dim, self.attach_global)
 
         actor_input_dim = mha_dim + self.actor_proprio_dim
         critic_input_dim = mha_dim + self.critic_proprio_dim
+        if self.attach_global:
+            actor_input_dim += mha_dim
+            critic_input_dim += mha_dim
 
         self.actor = MLP(actor_input_dim, num_actions, actor_hidden_dims, activation)
         self.critic = MLP(critic_input_dim, 1, critic_hidden_dims, activation)
 
         print(f"Critic MLP: {self.critic}")
         print(f"Encoder CNN: {self.map_cnn}")
-        print(f"Encoder Cross-Attention: {self.mha}")
+        print(f"Encoder MHA: {self.mha}")
         print(f"Encoder Actor Proprio: {self.actor_proprio_embedding}")
         print(f"Encoder Critic Proprio: {self.critic_proprio_embedding}")
 
@@ -131,50 +94,54 @@ class ActorCriticEncoder(nn.Module):
         self.distribution = None
         Normal.set_default_validate_args(False)
 
-    def _build_terrain_encoder(self, actor_proprio_dim, critic_proprio_dim):
-        """Build terrain encoder modules shared by actor and critic.
-        
-        Following AME (He et al., 2025):
-        - CNN processes only the height channel (z) with kernel_size=5, padding=2 (preserving spatial dimensions).
-        - CNN output features (mha_dim - 2 = 62) are concatenated with the (x, y) 2D coordinates (2)
-          to construct 64-dim point-wise local features with explicit positional encoding.
-        """
-        self.coord_embed_dim = 2
-        self.cnn_output_dim = self.mha_dim - self.coord_embed_dim
-
-        self.map_cnn = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=5, padding=2),
-            nn.ReLU(),
-            nn.BatchNorm2d(16),
-            nn.Conv2d(16, self.cnn_output_dim, kernel_size=5, padding=2),
-            nn.ReLU(),
-            nn.BatchNorm2d(self.cnn_output_dim),
-        )
+    def _build_terrain_encoder(self, actor_proprio_dim, critic_proprio_dim, attach_global):
+        """Build the legacy three-channel, downsampled terrain encoder."""
+        if self.cnn_downsample:
+            self.map_cnn = nn.Sequential(
+                nn.Conv2d(3, 16, kernel_size=5, padding=2, stride=2),
+                nn.ReLU(),
+                nn.BatchNorm2d(16),
+                nn.Conv2d(16, self.cnn_output_dim, kernel_size=3, padding=1),
+                nn.ReLU(),
+                nn.BatchNorm2d(self.cnn_output_dim),
+            )
+        else:
+            self.map_cnn = nn.Sequential(
+                nn.Conv2d(3, 16, kernel_size=5, padding=2),
+                nn.ReLU(),
+                nn.BatchNorm2d(16),
+                nn.Conv2d(16, self.cnn_output_dim, kernel_size=5, padding=2),
+                nn.ReLU(),
+                nn.BatchNorm2d(self.cnn_output_dim),
+            )
 
         self.actor_proprio_embedding = nn.Linear(actor_proprio_dim, self.mha_dim)
         self.critic_proprio_embedding = nn.Linear(critic_proprio_dim, self.mha_dim)
 
-        self.mha = CrossAttention(embed_dim=self.mha_dim, num_heads=self.num_heads)
+        if attach_global:
+            self.global_encoder = MLP(self.mha_dim, self.mha_dim, [256, 128], "elu")
+            self.query_projector = nn.Linear(self.mha_dim * 2, self.mha_dim)
+        else:
+            self.global_encoder = None
+            self.query_projector = None
+
+        self.mha = nn.MultiheadAttention(embed_dim=self.mha_dim, num_heads=self.num_heads, batch_first=True)
         print(
             f"Terrain Encoder: CNN output dim={self.cnn_output_dim}, "
-            f"Coord dim={self.coord_embed_dim}, Cross-Attention dim={self.mha_dim}, heads={self.num_heads}"
+            f"MHA dim={self.mha_dim}, heads={self.num_heads}"
         )
 
-    def _encode_terrain(self, obs, need_weights: bool = False):
+    def _encode_terrain(self, obs):
         """Encode terrain/map observations into attention-ready features."""
         # Extract map scan from the tail of observation.
         map_scan = obs[:, -self.L * self.W * self.coord_dim:].reshape(-1, self.W, self.L, self.coord_dim)
 
-        # 1. Height channel only (z) into CNN: [Batch, 1, W, L]
-        height_map = map_scan[..., 2:3].permute(0, 3, 1, 2)
-        cnn_features = self.map_cnn(height_map)  # [Batch, 62, W, L]
-
-        # 2. Extract 2D local coordinates (x, y) as explicit positional encoding: [Batch, 2, W, L]
-        xy_coords = map_scan[..., :2].permute(0, 3, 1, 2)
-
-        # 3. Concatenate CNN local features and spatial coordinates -> [Batch, 64, W, L]
-        local_map = torch.cat([cnn_features, xy_coords], dim=1)
-        local_features = local_map.permute(0, 2, 3, 1).flatten(1, 2)  # [Batch, W*L, 64]
+        map_features = self.map_cnn(map_scan.permute(0, 3, 1, 2))
+        if self.cnn_downsample:
+            token_count = (self.L // 2 + 1) * (self.W // 2 + 1)
+        else:
+            token_count = self.L * self.W
+        local_features = map_features.permute(0, 2, 3, 1).reshape(-1, token_count, self.cnn_output_dim)
         
         # Extract proprioceptive features (all non-map terms)
         proprio_obs = obs[:, :-self.L * self.W * self.coord_dim]
@@ -188,16 +155,23 @@ class ActorCriticEncoder(nn.Module):
                 f"or critic_proprio_dim {self.critic_proprio_dim}"
             )
 
+        if self.attach_global:
+            global_features = self.global_encoder(local_features)
+            global_features_max, _ = torch.max(global_features, dim=1)
+            query_input = torch.cat([global_features_max, proprio_embedding], dim=-1)
+            proprio_embedding = self.query_projector(query_input)
+
         proprio_embedding = proprio_embedding.unsqueeze(1)
         mha_output, attention_weights = self.mha(
             query=proprio_embedding,
             key=local_features,
             value=local_features,
-            need_weights=need_weights,
         )
 
         mha_output = mha_output.squeeze(1)
         encoded_obs = torch.cat([mha_output, proprio_obs], dim=-1)
+        if self.attach_global:
+            encoded_obs = torch.cat([global_features_max, encoded_obs], dim=-1)
 
         if torch.isnan(encoded_obs).any() or torch.isinf(encoded_obs).any():
             print(f"Warning: encoded_obs contains NaN or Inf: {encoded_obs}")
@@ -226,7 +200,7 @@ class ActorCriticEncoder(nn.Module):
         if torch.isnan(obs).any() or torch.isinf(obs).any():
             print(f"Warning: obs contains NaN or Inf: {obs}")
 
-        encoded_obs, _ = self._encode_terrain(obs, need_weights=False)
+        encoded_obs, _ = self._encode_terrain(obs)
         mean = self.actor(encoded_obs)
 
         if torch.isnan(mean).any() or torch.isinf(mean).any():
@@ -247,12 +221,12 @@ class ActorCriticEncoder(nn.Module):
 
     def act_inference(self, obs):
         actor_obs = self.get_actor_obs(obs)
-        encoded_obs, attention_weights = self._encode_terrain(actor_obs, need_weights=True)
+        encoded_obs, attention_weights = self._encode_terrain(actor_obs)
         return self.actor(encoded_obs), attention_weights
 
     def evaluate(self, obs, **kwargs):
         critic_obs = self.get_critic_obs(obs)
-        encoded_obs, _ = self._encode_terrain(critic_obs, need_weights=False)
+        encoded_obs, _ = self._encode_terrain(critic_obs)
         value = self.critic(encoded_obs)
         if torch.isnan(value).any() or torch.isinf(value).any():
             print(f"Warning: critic value contains NaN or Inf, {value}")
