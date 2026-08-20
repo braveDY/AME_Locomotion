@@ -124,6 +124,7 @@ class PPO:
         mean_value_loss = 0
         mean_surrogate_loss = 0
         mean_entropy = 0
+        mean_kl = 0.0
 
         # generator for mini batches
         if self.policy.is_recurrent:
@@ -176,22 +177,7 @@ class PPO:
                         torch.distributed.all_reduce(kl_mean, op=torch.distributed.ReduceOp.SUM)
                         kl_mean /= self.gpu_world_size
 
-                    # Update the learning rate (only on main process)
-                    if self.gpu_global_rank == 0:
-                        if kl_mean > self.desired_kl * 2.0:
-                            self.learning_rate = max(1e-5, self.learning_rate / 1.5)
-                        elif kl_mean < self.desired_kl / 2.0 and kl_mean > 0.0:
-                            self.learning_rate = min(1e-2, self.learning_rate * 1.5)
-
-                    # Broadcast learning rate to all GPUs
-                    if self.is_multi_gpu:
-                        lr_tensor = torch.tensor(self.learning_rate, device=self.device)
-                        torch.distributed.broadcast(lr_tensor, src=0)
-                        self.learning_rate = lr_tensor.item()
-
-                    # Update learning rate in optimizer
-                    for param_group in self.optimizer.param_groups:
-                        param_group["lr"] = self.learning_rate
+                    mean_kl += kl_mean.item()
 
             # Surrogate loss
             ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
@@ -235,6 +221,24 @@ class PPO:
         mean_value_loss /= num_updates
         mean_surrogate_loss /= num_updates
         mean_entropy /= num_updates
+
+        # Update the learning rate once per iteration based on average KL
+        if self.desired_kl is not None and self.schedule == "adaptive":
+            mean_kl /= num_updates
+            if self.gpu_global_rank == 0:
+                if mean_kl > self.desired_kl * 2.0:
+                    self.learning_rate = max(1e-5, self.learning_rate / 1.5)
+                elif mean_kl < self.desired_kl / 2.0 and mean_kl > 0.0:
+                    self.learning_rate = min(1e-2, self.learning_rate * 1.5)
+
+            if self.is_multi_gpu:
+                lr_tensor = torch.tensor(self.learning_rate, device=self.device)
+                torch.distributed.broadcast(lr_tensor, src=0)
+                self.learning_rate = lr_tensor.item()
+
+            for param_group in self.optimizer.param_groups:
+                param_group["lr"] = self.learning_rate
+
         self.storage.clear()
 
         return {
