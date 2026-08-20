@@ -85,7 +85,12 @@ docker run -d \
 > 仅执行 `tmux kill-session` 无法保证容器内 `python` 进程被完全终止。若存在残留孤儿进程占用显存，会导致 PhysX 报 `CUDA error: out of memory` 或 `PhysX Internal CUDA error (code 2)`。
 > 因此启动前必须在容器内显式执行 `pkill -9 -f python`，并确认显存已完全释放。
 
-清理旧会话与残留进程，并在后台新建 `train` 会话（日志写入 `train.log`）：
+#### 选项 A：长任务无人值守（训练结束自动销毁容器并释放显存，推荐）
+```bash
+ssh lab "tmux kill-session -t train 2>/dev/null || true; docker exec isaaclab_braveDY pkill -9 -f python 2>/dev/null || true; sleep 2; tmux new-session -d -s train 'docker exec -w /robot_rl/AME_Locomotion isaaclab_braveDY /workspace/isaaclab/_isaac_sim/python.sh scripts/rsl_rl/train.py --task AME-Go2-Custom-v0 --headless --num_envs 1024 --max_iterations 10000 2>&1 | tee /home/ubuntu20/.braveDY/robot_rl/AME_Locomotion/train.log; docker rm -f isaaclab_braveDY 2>/dev/null || true'; sleep 2; tmux ls"
+```
+
+#### 选项 B：普通调试训练（训练结束后保留容器）
 ```bash
 ssh lab "tmux kill-session -t train 2>/dev/null || true; docker exec isaaclab_braveDY pkill -9 -f python 2>/dev/null || true; sleep 2; tmux new-session -d -s train 'docker exec -w /robot_rl/AME_Locomotion isaaclab_braveDY /workspace/isaaclab/_isaac_sim/python.sh scripts/rsl_rl/train.py --task AME-Go2-Custom-v0 --headless --num_envs 1024 --max_iterations 10000 2>&1 | tee /home/ubuntu20/.braveDY/robot_rl/AME_Locomotion/train.log'; sleep 2; tmux ls"
 ```
@@ -106,6 +111,12 @@ ssh lab "tmux kill-session -t train 2>/dev/null || true; docker exec isaaclab_br
   ssh lab "nvidia-smi"
   ```
   *(正常训练状态下 RTX 4090 显存占用约 10~15GB，GPU 利用率处于 60%~100%，无多余僵尸进程)*
+
+### 4. 正在运行任务的后台自动清理守护（对已在跑的任务生效）
+若训练已经在 tmux 中运行但启动时未加自动销毁指令，可在服务器宿主机后台挂载监听守护进程：
+```bash
+ssh lab "nohup bash -c 'while pgrep -f \"scripts/rsl_rl/train.py\" > /dev/null; do sleep 15; done; sleep 5; docker rm -f isaaclab_braveDY 2>/dev/null || true; echo \"[\$(date)] Container auto-removed after train finished\" >> /home/ubuntu20/.braveDY/robot_rl/AME_Locomotion/auto_cleanup.log' > /dev/null 2>&1 &"
+```
 
 ---
 
