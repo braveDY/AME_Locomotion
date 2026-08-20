@@ -80,9 +80,14 @@ docker run -d \
 `/workspace/isaaclab/_isaac_sim/python.sh` （挂载了 Omniverse Kit 与 USD 核心依赖）。
 
 ### 2. 启动 Tmux 训练会话
-清理旧会话，在后台新建 `train` 会话，并将标准输出与错误同时写入 `train.log`：
+> [!IMPORTANT]
+> **清理旧进程与显存保护**：
+> 仅执行 `tmux kill-session` 无法保证容器内 `python` 进程被完全终止。若存在残留孤儿进程占用显存，会导致 PhysX 报 `CUDA error: out of memory` 或 `PhysX Internal CUDA error (code 2)`。
+> 因此启动前必须在容器内显式执行 `pkill -9 -f python`，并确认显存已完全释放。
+
+清理旧会话与残留进程，并在后台新建 `train` 会话（日志写入 `train.log`）：
 ```bash
-ssh lab "tmux kill-session -t train 2>/dev/null || true; tmux new-session -d -s train 'docker exec -w /robot_rl/AME_Locomotion isaaclab_braveDY /workspace/isaaclab/_isaac_sim/python.sh scripts/rsl_rl/train.py --task AME-Go2-Custom-v0 --headless --num_envs 1024 --max_iterations 10000 2>&1 | tee /home/ubuntu20/.braveDY/robot_rl/AME_Locomotion/train.log'; sleep 2; tmux ls"
+ssh lab "tmux kill-session -t train 2>/dev/null || true; docker exec isaaclab_braveDY pkill -9 -f python 2>/dev/null || true; sleep 2; tmux new-session -d -s train 'docker exec -w /robot_rl/AME_Locomotion isaaclab_braveDY /workspace/isaaclab/_isaac_sim/python.sh scripts/rsl_rl/train.py --task AME-Go2-Custom-v0 --headless --num_envs 1024 --max_iterations 10000 2>&1 | tee /home/ubuntu20/.braveDY/robot_rl/AME_Locomotion/train.log'; sleep 2; tmux ls"
 ```
 
 ### 3. 监控与日常维护
@@ -100,6 +105,26 @@ ssh lab "tmux kill-session -t train 2>/dev/null || true; tmux new-session -d -s 
   ```bash
   ssh lab "nvidia-smi"
   ```
-  *(确保 RTX 4090 利用率 100%，显存处于 20~23GB 之间，无多余僵尸进程)*
+  *(正常训练状态下 RTX 4090 显存占用约 10~15GB，GPU 利用率处于 60%~100%，无多余僵尸进程)*
 
+---
 
+## 六、 常见故障与排查（Troubleshooting）
+
+### 1. PhysX CUDA OOM / Internal CUDA error (code 2)
+- **现象**：日志输出 `PhysX failed to allocate GPU memory - aborting simulation` 或 `CUDA error: out of memory: mGpuContactPairsDev`。
+- **原因**：上一次训练的 Isaac Sim 进程未在容器内彻底退出，占用显存导致新进程无法分配 CUDA 内存。
+- **解决办法**：
+  1. 在容器内强杀所有 python 进程：
+     ```bash
+     ssh lab "docker exec isaaclab_braveDY pkill -9 -f python"
+     ```
+  2. 若仍未释放，执行**第四节的标准命令**重置/重建 `isaaclab_braveDY` 容器。
+  3. 执行 `ssh lab "nvidia-smi"` 确认显存空闲 > 20GB 后再重新启动训练。
+
+### 2. Git 拉取冲突或未跟踪修改阻止同步
+- **现象**：`git pull origin <branch>` 提示本地有未暂存修改或冲突。
+- **解决办法**：
+  ```bash
+  ssh lab "cd /home/ubuntu20/.braveDY/robot_rl/AME_Locomotion && git checkout -- . && git clean -fd && git pull origin <branch>"
+  ```
