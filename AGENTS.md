@@ -5,7 +5,7 @@
 - **审慎修改**：修改代码前必须先阅读相关文件，充分理解上下文。
 - **副作用操作预告**：执行有副作用的操作（删除、覆盖文件、`git push` 等）前先向用户说明计划。
 - **Git 提交规范**：Git 提交信息必须用英文，严格遵循 Conventional Commits 规范（如 `feat:`, `fix:`, `tune:`, `refactor:`, `chore:`）。
-- **网络代理**：本地网络请求或 GitHub 操作超时时，使用 `/home/brave/docs/scripts/proxy.sh` 代理解决（端口 7897）。
+- **网络代理**：本地网络请求或 GitHub 操作超时时，必须先执行 `source /home/brave/docs/scripts/proxy.sh && proxy_on` 启用 `127.0.0.1:7897` 的 **HTTP 代理**。严禁将 Git 的 `http.proxy` 或 `https.proxy` 强制改为 `socks5h://127.0.0.1:7897`，否则可能触发 `gnutls_handshake() failed`。
 - **容器方案**：当前项目使用容器开发验证，`src/elevation_mapping/em_gpu_humble.sh` 为局部高程建图容器启动脚本。
 
 ---
@@ -17,10 +17,19 @@
    git add <modified_files>
    git commit -m "<type>(<scope>): <english message>"
    ```
-2. **通过代理推送至远端**：
+2. **通过 HTTP 代理推送至远端**：
    ```bash
-   git -c http.proxy=socks5h://127.0.0.1:7897 -c https.proxy=socks5h://127.0.0.1:7897 push origin <branch_name>
+   source /home/brave/docs/scripts/proxy.sh
+   proxy_on
+   git ls-remote origin HEAD
+   git push origin <branch_name>
    ```
+
+   > [!IMPORTANT]
+   > - `proxy.sh` 是需要 `source` 导入的函数文件，不能直接执行。
+   > - 代理进程应监听 `127.0.0.1:7897`；可用 `ss -ltnp | grep ':7897'` 检查。
+   > - 本机 Git 全局配置使用 `http://127.0.0.1:7897` 作为 HTTP/HTTPS 代理；不要用 `-c http.proxy=socks5h://...` 覆盖它。
+   > - `https://gh-proxy.org/https://github.com/...` 仅适合匿名拉取，推送会报 `No anonymous write access`，不得用作 push remote。
 
 ---
 
@@ -133,7 +142,16 @@ ssh lab "nohup bash -c 'while pgrep -f \"scripts/rsl_rl/train.py\" > /dev/null; 
   2. 若仍未释放，执行**第四节的标准命令**重置/重建 `isaaclab_braveDY` 容器。
   3. 执行 `ssh lab "nvidia-smi"` 确认显存空闲 > 20GB 后再重新启动训练。
 
-### 2. Git 拉取冲突或未跟踪修改阻止同步
+### 3. GitHub 推送代理 / TLS 握手失败
+- **现象**：`git push` 报 `gnutls_handshake() failed: The TLS connection was non-properly terminated`，或代理地址推送报 `No anonymous write access`。
+- **原因**：将 Mihomo 的 HTTP 代理端口误当作 SOCKS 代理覆盖 Git 配置，或试图通过只支持匿名读取的 `gh-proxy.org` 写入 GitHub。
+- **解决办法**：
+  1. 加载并开启项目代理：`source /home/brave/docs/scripts/proxy.sh && proxy_on`。
+  2. 确认监听与连通性：`ss -ltnp | grep ':7897'`、`git ls-remote origin HEAD`。
+  3. 确认 Git 未被 SOCKS 配置覆盖：`git config --show-origin --get-regexp '^(http|https)\\..*proxy$|^http\\.proxy$|^https\\.proxy$'`；应使用 `http://127.0.0.1:7897`。
+  4. 直接推送认证 remote：`git push origin <branch_name>`；不要对 push 使用 `gh-proxy.org`。
+
+### 4. Git 拉取冲突或未跟踪修改阻止同步
 - **现象**：`git pull origin <branch>` 提示本地有未暂存修改或冲突。
 - **解决办法**：
   ```bash
