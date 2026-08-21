@@ -83,7 +83,15 @@ class MySceneCfg(InteractiveSceneCfg):
         debug_vis=False,
         mesh_prim_paths=["/World/ground"],
     )
-    contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
+    contact_forces = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/.*",
+        history_length=3,
+        track_air_time=True,
+    )
+    base_contact_forces = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/torso_link",
+        history_length=3,
+    )
 
     # lights
     sky_light = AssetBaseCfg(
@@ -404,19 +412,8 @@ class TerminationsCfg:
     base_contact = DoneTerm(
         func=mdp.illegal_contact,
         params={
-            "sensor_cfg": SceneEntityCfg(
-                "contact_forces",
-                body_names=[
-                    "torso_link",
-                    ".*_shoulder_.*_link",
-                    ".*_hip_.*_link",
-                    ".*_knee_link",
-                    ".*_elbow_link",
-                    "waist_.*_link",
-                    "pelvis",
-                ],
-            ),
-            "threshold": 1.0,
+            "sensor_cfg": SceneEntityCfg("base_contact_forces", body_names="torso_link"),
+            "threshold": 10.0,
         },
     )
 
@@ -473,6 +470,8 @@ class G1RoughEnvCfg(ManagerBasedRLEnvCfg):
             self.scene.height_scanner.update_period = self.decimation * self.sim.dt
         if self.scene.contact_forces is not None:
             self.scene.contact_forces.update_period = self.sim.dt
+        if self.scene.base_contact_forces is not None:
+            self.scene.base_contact_forces.update_period = self.sim.dt
 
         # check if terrain levels curriculum is enabled - if so, enable curriculum for terrain generator
         if getattr(self.curriculum, "terrain_levels", None) is not None:
