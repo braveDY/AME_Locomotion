@@ -40,11 +40,13 @@ class Go2AMEPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 class G1AMEPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 10000
-    save_interval = 1000
+    save_interval = 100
     experiment_name = "g1_ame"
     policy = RslRlPpoActorCriticCfg(
         class_name="ActorCriticEncoder",
         init_noise_std=1.0,
+        actor_obs_normalization=False,
+        critic_obs_normalization=False,
         actor_hidden_dims=[512, 256, 128],
         critic_hidden_dims=[512, 256, 128],
         activation="elu",

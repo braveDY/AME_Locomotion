@@ -4,9 +4,10 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import math
-from dataclasses import MISSING
+import os
 
 import isaaclab.sim as sim_utils
+from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg, ViewerCfg
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
@@ -34,14 +35,144 @@ FINETUNE = False
 from ame_locomotion.terrains.terrain_cfg import ROUGH_TERRAINS_CFG
 from ame_locomotion.terrains.finetune_terrain_cfg import FINETUNE_ROUGH_TERRAINS_CFG
 
-# Official Isaac Lab G1 asset configuration
-try:
-    from isaaclab_assets.robots.unitree import G1_29DOF_CFG as ROBOT_CFG
-except ImportError:
-    from isaaclab_assets.robots.unitree import G1_CFG as ROBOT_CFG
 
-ROBOT_CFG = ROBOT_CFG.copy()
-ROBOT_CFG.spawn.activate_contact_sensors = True
+@configclass
+class UnitreeArticulationCfg(ArticulationCfg):
+    """Configuration for Unitree articulations."""
+
+    joint_sdk_names: list[str] = None
+    soft_joint_pos_limit_factor = 0.9
+
+
+# Local USD model path from commit 6ca4081
+UNITREE_MODEL_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../unitree_model"))
+
+UNITREE_G1_29DOF_CFG = UnitreeArticulationCfg(
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=f"{UNITREE_MODEL_DIR}/G1/29dof/usd/g1_29dof_rev_1_0/g1_29dof_rev_1_0.usd",
+        activate_contact_sensors=True,
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            enabled_self_collisions=True, solver_position_iteration_count=8, solver_velocity_iteration_count=4
+        ),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        pos=(0.0, 0.0, 0.8),
+        joint_pos={
+            "left_hip_pitch_joint": -0.1,
+            "right_hip_pitch_joint": -0.1,
+            ".*_knee_joint": 0.3,
+            ".*_ankle_pitch_joint": -0.2,
+            ".*_shoulder_pitch_joint": 0.3,
+            "left_shoulder_roll_joint": 0.25,
+            "right_shoulder_roll_joint": -0.25,
+            ".*_elbow_joint": 0.97,
+            "left_wrist_roll_joint": 0.15,
+            "right_wrist_roll_joint": -0.15,
+        },
+        joint_vel={".*": 0.0},
+    ),
+    actuators={
+        "N7520-14.3": ImplicitActuatorCfg(
+            joint_names_expr=[".*_hip_pitch_.*", ".*_hip_yaw_.*", "waist_yaw_joint"],
+            effort_limit_sim=88,
+            velocity_limit_sim=32.0,
+            stiffness={
+                ".*_hip_.*": 100.0,
+                "waist_yaw_joint": 200.0,
+            },
+            damping={
+                ".*_hip_.*": 2.0,
+                "waist_yaw_joint": 5.0,
+            },
+            armature=0.01,
+        ),
+        "N7520-22.5": ImplicitActuatorCfg(
+            joint_names_expr=[".*_hip_roll_.*", ".*_knee_.*"],
+            effort_limit_sim=139,
+            velocity_limit_sim=20.0,
+            stiffness={
+                ".*_hip_roll_.*": 100.0,
+                ".*_knee_.*": 150.0,
+            },
+            damping={
+                ".*_hip_roll_.*": 2.0,
+                ".*_knee_.*": 4.0,
+            },
+            armature=0.01,
+        ),
+        "N5020-16": ImplicitActuatorCfg(
+            joint_names_expr=[
+                ".*_shoulder_.*",
+                ".*_elbow_.*",
+                ".*_wrist_roll.*",
+                ".*_ankle_.*",
+                "waist_roll_joint",
+                "waist_pitch_joint",
+            ],
+            effort_limit_sim=25,
+            velocity_limit_sim=37,
+            stiffness=40.0,
+            damping={
+                ".*_shoulder_.*": 10.0,
+                ".*_elbow_.*": 10.0,
+                ".*_wrist_roll.*": 10.0,
+                ".*_ankle_.*": 2.0,
+                "waist_.*_joint": 5.0,
+            },
+            armature=0.01,
+        ),
+        "W4010-25": ImplicitActuatorCfg(
+            joint_names_expr=[".*_wrist_pitch.*", ".*_wrist_yaw.*"],
+            effort_limit_sim=5,
+            velocity_limit_sim=22,
+            stiffness=40.0,
+            damping=10.0,
+            armature=0.01,
+        ),
+    },
+    joint_sdk_names=[
+        "left_hip_pitch_joint",
+        "left_hip_roll_joint",
+        "left_hip_yaw_joint",
+        "left_knee_joint",
+        "left_ankle_pitch_joint",
+        "left_ankle_roll_joint",
+        "right_hip_pitch_joint",
+        "right_hip_roll_joint",
+        "right_hip_yaw_joint",
+        "right_knee_joint",
+        "right_ankle_pitch_joint",
+        "right_ankle_roll_joint",
+        "waist_yaw_joint",
+        "waist_roll_joint",
+        "waist_pitch_joint",
+        "left_shoulder_pitch_joint",
+        "left_shoulder_roll_joint",
+        "left_shoulder_yaw_joint",
+        "left_elbow_joint",
+        "left_wrist_roll_joint",
+        "left_wrist_pitch_joint",
+        "left_wrist_yaw_joint",
+        "right_shoulder_pitch_joint",
+        "right_shoulder_roll_joint",
+        "right_shoulder_yaw_joint",
+        "right_elbow_joint",
+        "right_wrist_roll_joint",
+        "right_wrist_pitch_joint",
+        "right_wrist_yaw_joint",
+    ],
+)
+
+ROBOT_CFG = UNITREE_G1_29DOF_CFG
 
 ##
 # Scene definition
@@ -83,15 +214,7 @@ class MySceneCfg(InteractiveSceneCfg):
         debug_vis=False,
         mesh_prim_paths=["/World/ground"],
     )
-    contact_forces = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/.*",
-        history_length=3,
-        track_air_time=True,
-    )
-    base_contact_forces = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/torso_link",
-        history_length=3,
-    )
+    contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
 
     # lights
     sky_light = AssetBaseCfg(
@@ -141,7 +264,6 @@ class ObservationsCfg:
     class PolicyCfg(ObsGroup):
         """Observations for policy group."""
 
-        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel, scale=0.2, noise=Unoise(n_min=-0.2, n_max=0.2))
         projected_gravity = ObsTerm(func=mdp.projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05))
         velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
@@ -286,7 +408,7 @@ class RewardsCfg:
         weight=-1.0,
         params={
             "threshold": 1,
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["(?!.*ankle.*).*"]),  # All body parts except feet
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["(?!.*ankle.*).*"]),
         },
     )
     dof_torques_l2 = RewTerm(
@@ -360,17 +482,15 @@ class RewardsCfg:
         params={
             "asset_cfg": SceneEntityCfg("robot"),
             "coord_joints": [
-                # Cross-side coordination: left leg forward swing with right arm forward swing
                 ["left_hip_pitch_joint", "right_shoulder_pitch_joint"],
                 ["right_hip_pitch_joint", "left_shoulder_pitch_joint"],
             ],
             "coord_signs": [
-                [1.0, 1.0],  # Left hip and right shoulder move in the same direction
-                [1.0, 1.0],  # Right hip and left shoulder move in the same direction
+                [1.0, 1.0],
+                [1.0, 1.0],
             ],
         },
     )
-    # Penalize deviation from default of the joints that are not essential for locomotion
     joint_deviation_hip = RewTerm(
         func=mdp.joint_deviation_l1,
         weight=-0.1,
@@ -412,8 +532,19 @@ class TerminationsCfg:
     base_contact = DoneTerm(
         func=mdp.illegal_contact,
         params={
-            "sensor_cfg": SceneEntityCfg("base_contact_forces", body_names="torso_link"),
-            "threshold": 10.0,
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=[
+                    "torso_link",
+                    ".*_shoulder_.*_link",
+                    ".*_hip_.*_link",
+                    ".*_knee_link",
+                    ".*_elbow_link",
+                    "waist_.*_link",
+                    "pelvis",
+                ],
+            ),
+            "threshold": 1.0,
         },
     )
 
@@ -470,8 +601,6 @@ class G1RoughEnvCfg(ManagerBasedRLEnvCfg):
             self.scene.height_scanner.update_period = self.decimation * self.sim.dt
         if self.scene.contact_forces is not None:
             self.scene.contact_forces.update_period = self.sim.dt
-        if self.scene.base_contact_forces is not None:
-            self.scene.base_contact_forces.update_period = self.sim.dt
 
         # check if terrain levels curriculum is enabled - if so, enable curriculum for terrain generator
         if getattr(self.curriculum, "terrain_levels", None) is not None:
@@ -527,8 +656,6 @@ class G1RoughEnvCfg(ManagerBasedRLEnvCfg):
             self.events.add_base_mass = None
             self.events.base_com = None
             # Observations
-            self.observations.policy.enable_corruption = False
-            self.observations.policy.base_lin_vel.noise = None
             self.observations.policy.base_ang_vel.noise = None
             self.observations.policy.projected_gravity.noise = None
             self.observations.policy.velocity_commands.noise = None
@@ -537,7 +664,7 @@ class G1RoughEnvCfg(ManagerBasedRLEnvCfg):
             self.observations.policy.actions.noise = None
             self.observations.policy.height_scan.params["noise"] = False
             # Reward Weights
-            self.rewards.termination_penalty.weight = -200
+            self.rewards.termination_penalty.weight = -200.0
             self.rewards.track_lin_vel_xy_exp.weight = 2.0
             self.rewards.track_ang_vel_z_exp.weight = 3.0
             self.rewards.ang_vel_xy_l2.weight = -0.05
@@ -586,9 +713,12 @@ class G1RoughEnvCfg_PLAY(G1RoughEnvCfg):
         )
         # spawn the robot randomly in the grid (instead of their terrain levels)
         self.scene.terrain.max_init_terrain_level = None
-        self.scene.terrain.terrain_generator.num_rows = 1
-        self.scene.terrain.terrain_generator.num_cols = 1
-        
+        if self.scene.terrain.terrain_generator is not None:
+            self.scene.terrain.terrain_generator.num_rows = 1
+            self.scene.terrain.terrain_generator.num_cols = 1
+            self.scene.terrain.terrain_generator.curriculum = False
+            self.scene.terrain.terrain_generator.size = (8.0, 8.0)
+
         self.events.reset_base.params = {
             "pose_range": {"x": (-0.0, 0.0), "y": (-0.0, 0.0), "yaw": (0.0, 0.0)},
             "velocity_range": {
