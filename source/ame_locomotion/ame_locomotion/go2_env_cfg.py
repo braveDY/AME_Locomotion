@@ -272,16 +272,16 @@ class UnitreeGo2CustomEnvCfg_PLAY(UnitreeGo2CustomEnvCfg):
         self.episode_length_s = 40.0
         self.scene.terrain.max_init_terrain_level = None
         self.scene.terrain.terrain_generator.curriculum = False
-        self.scene.terrain.terrain_generator.num_rows = 4
-        self.scene.terrain.terrain_generator.num_cols = 4
+        self.scene.terrain.terrain_generator.num_rows = 1
+        self.scene.terrain.terrain_generator.num_cols = 1
         self.scene.terrain.terrain_generator.size = (8.0, 8.0)
 
         # Select one terrain by uncommenting its entry and commenting out others.
         self.scene.terrain.terrain_generator.sub_terrains = {
             # === 1. 经典粗糙地形 (ROUGH_TERRAINS_CFG 标准预设) ===
-            "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
-                proportion=1.0, noise_range=(0.02, 0.10), noise_step=0.02, border_width=0.25
-            ),  # 随机起伏粗糙地面 (Continuous Rough Terrain)
+            # "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
+            #     proportion=1.0, noise_range=(0.02, 0.10), noise_step=0.02, border_width=0.25
+            # ),  # 随机起伏粗糙地面 (Continuous Rough Terrain)
             # "boxes": terrain_gen.MeshRandomGridTerrainCfg(
             #     proportion=1.0, grid_width=0.45, grid_height_range=(0.05, 0.2), platform_width=2.0
             # ),  # 离散随机高低方块网格 (Discrete Boxes Grid)
@@ -341,9 +341,9 @@ class UnitreeGo2CustomEnvCfg_PLAY(UnitreeGo2CustomEnvCfg):
             #     proportion=1.0, stone_height_max=0.05, stone_width_range=(0.25, 0.5),
             #     stone_distance_range=(0.05, 0.25), platform_width=2.0, holes_depth=-2.0, border_width=0.25
             # ),  # 梅花桩/跳岩石块地形 (Stepping Stones)
-            # "hf_wave": terrain_gen.HfWaveTerrainCfg(
-            #     proportion=1.0, amplitude_range=(0.1, 0.3), num_waves=4, border_width=0.25
-            # ),  # 正弦连续波浪起伏地面 (Wave Terrain)
+            "hf_wave": terrain_gen.HfWaveTerrainCfg(
+                proportion=1.0, amplitude_range=(0.1, 0.3), num_waves=4, border_width=0.25
+            ),  # 正弦连续波浪起伏地面 (Wave Terrain)
             # "hf_discrete_obstacles": terrain_gen.HfDiscreteObstaclesTerrainCfg(
             #     proportion=1.0, obstacle_width_range=(0.3, 0.6), obstacle_height_range=(0.05, 0.15),
             #     num_obstacles=40, platform_width=2.0, border_width=0.25
@@ -352,3 +352,9 @@ class UnitreeGo2CustomEnvCfg_PLAY(UnitreeGo2CustomEnvCfg):
         self.observations.policy.enable_corruption = False
         self.observations.policy.height_scan.params["noise"] = False
         self.events.base_external_force_torque = None
+
+
+# Aliases matching G1 configuration style
+Go2RoughEnvCfg = UnitreeGo2CustomEnvCfg
+Go2RoughEnvCfg_PLAY = UnitreeGo2CustomEnvCfg_PLAY
+

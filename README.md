@@ -21,8 +21,9 @@
 ```text
 AME_Locomotion/
 ├── source/ame_locomotion/ame_locomotion/   # 任务与环境模块
-│   ├── __init__.py                         # Gym 任务注册（AME-Go2-Custom-v0 / Play-v0）
-│   ├── env_cfg.py                          # Go2 仿真场景、奖励函数、域随机化及地形预设
+│   ├── __init__.py                         # Gym 任务注册（Go2 与 G1 29DOF 任务）
+│   ├── go2_env_cfg.py                      # Go2 仿真场景、奖励函数、域随机化及地形预设
+│   ├── g1_29dof_env_cfg.py                 # G1 29DOF 仿真场景、全身协同奖励与地形配置
 │   ├── ppo_cfg.py                          # PPO 算法与 AME 神经网络超参数配置
 │   ├── mdp/                                # 自定义 MDP 项（奖励函数、观测组、速度指令）
 │   └── terrains/                           # 自定义复杂高度图地形生成器
@@ -88,6 +89,8 @@ python scripts/rsl_rl/train.py \
 运行训练好的检查点，并开启实时 3D 注意力可视化与视频录制：
 
 ```bash
+rsync -avzP --ignore-existing lab:/home/ubuntu20/.braveDY/robot_rl/AME_Locomotion/logs/ ./logs/
+
 python scripts/rsl_rl/play.py \
   --task AME-Go2-Custom-Play-v0 \
   --checkpoint logs/rsl_rl/go2_ame/<run_folder>/model_<iteration>.pt \
@@ -99,12 +102,8 @@ python scripts/rsl_rl/play.py \
 
 python scripts/rsl_rl/play.py \
   --task AME-Go2-Custom-Play-v0 \
-  --checkpoint logs/rsl_rl/go2_ame/2026-08-19_18-04-25/model_500.pt \
-  --num_envs 1 \
-  --vis_attention \
-  --headless \
-  --video \
-  --video_length 300
+  --checkpoint logs/rsl_rl/go2_ame/2026-08-20_09-45-49/model_9999.pt \
+  --vis_attention
 ```
 
 * `--vis_attention`：在仿真窗口中以不同深浅颜色的 3D Marker 实时绘制机器人足底当前聚焦的地形区域。
@@ -136,7 +135,7 @@ python scripts/rsl_rl/play.py \
 
 ## ⚙️ 地形配置自定义
 
-在 `source/ame_locomotion/ame_locomotion/env_cfg.py` 的 `UnitreeGo2CustomEnvCfg_PLAY` 中，提供了分门别类的地形预设，只需通过取消/添加注释即可灵活切换：
+在 `source/ame_locomotion/ame_locomotion/go2_env_cfg.py` 的 `UnitreeGo2CustomEnvCfg_PLAY` 中，提供了分门别类的地形预设，只需通过取消/添加注释即可灵活切换：
 
 ```python
 self.scene.terrain.terrain_generator.sub_terrains = {

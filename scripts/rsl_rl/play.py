@@ -283,6 +283,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                 if scan_grid_shape is not None:
                     rows, cols = scan_grid_shape
                     if rows * cols == n_rays:
+                        ray_hits_grid = ray_hits.reshape(rows, cols, 3)
                         ds_hits = ray_hits_grid[::2, ::2, :].reshape(-1, 3)
                         if ds_hits.shape[0] == n_attn:
                             selected_hits = ds_hits
