@@ -104,6 +104,11 @@ python scripts/rsl_rl/play.py \
   --task AME-Go2-Custom-Play-v0 \
   --checkpoint logs/rsl_rl/go2_ame/2026-08-20_09-45-49/model_9999.pt \
   --vis_attention
+
+python scripts/rsl_rl/play.py \
+  --task AME-G1-29DOF-Play-v0 \
+  --checkpoint logs/rsl_rl/g1_ame/2026-08-21_03-59-45/model_3000.pt \
+  --vis_attention 
 ```
 
 * `--vis_attention`：在仿真窗口中以不同深浅颜色的 3D Marker 实时绘制机器人足底当前聚焦的地形区域。
