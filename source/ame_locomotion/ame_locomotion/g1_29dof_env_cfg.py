@@ -40,6 +40,9 @@ try:
 except ImportError:
     from isaaclab_assets.robots.unitree import G1_CFG as ROBOT_CFG
 
+ROBOT_CFG = ROBOT_CFG.copy()
+ROBOT_CFG.spawn.activate_contact_sensors = True
+
 ##
 # Scene definition
 ##
